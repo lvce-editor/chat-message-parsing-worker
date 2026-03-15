@@ -9,9 +9,9 @@ const commonArgs = ['--format=esm', '--bundle', '--platform=node', '--watch']
 
 const tasks = [
   {
-    input: 'packages/chat-message-parsing-worker/src/chatNetworkWorkerMain.ts',
+    input: 'packages/chat-message-parsing-worker/src/chatMessageParsingWorkerMain.ts',
     outputDir: '.tmp/dist-chat-message-parsing-worker/dist',
-    outputFile: '.tmp/dist-chat-message-parsing-worker/dist/chatNetworkWorkerMain.js',
+    outputFile: '.tmp/dist-chat-message-parsing-worker/dist/chatMessageParsingWorkerMain.js',
     external: ['electron', 'ws'],
   },
 ]

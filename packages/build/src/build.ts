@@ -79,7 +79,7 @@ delete debugViewPackageJson.xo
 delete debugViewPackageJson.directories
 delete debugViewPackageJson.nodemonConfig
 debugViewPackageJson.version = version
-debugViewPackageJson.main = 'dist/chatNetworkWorkerMain.js'
+debugViewPackageJson.main = 'dist/chatMessageParsingWorkerMain.js'
 
 await writeJson(join(debugViewDist, 'package.json'), debugViewPackageJson)
 await cp(join(root, 'README.md'), join(debugViewDist, 'README.md'))
