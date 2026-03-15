@@ -47,5 +47,8 @@
     "@lvce-editor/rpc": "^6.4.0",
     "jest": "^30.3.0",
     "ts-jest": "^29.4.6"
+  },
+  "dependencies": {
+    "@lvce-editor/rpc-registry": "^9.7.0"
   }
 }
