@@ -1,0 +1,24 @@
+{
+  "name": "build",
+  "version": "0.0.0-dev",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "measure": "node --experimental-strip-types src/measureMemory.ts",
+    "measure:visible": "node --experimental-strip-types src/measureMemory.ts --no-headless"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@babel/preset-typescript": "^7.28.5",
+    "@lvce-editor/measure-memory": "^3.1.0",
+    "@lvce-editor/verror": "^1.7.0",
+    "@rollup/plugin-babel": "^7.0.0",
+    "@rollup/plugin-node-resolve": "^16.0.3",
+    "@types/node": "^22.14.1",
+    "esbuild": "^0.27.3",
+    "execa": "^9.6.1",
+    "rollup": "^4.40.0"
+  }
+}

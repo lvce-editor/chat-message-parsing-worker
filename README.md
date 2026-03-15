@@ -1,2 +1,3 @@
-# chat-message-parsing-worker
-Chat Message Parsing Worker
+# Chat Network Worker
+
+WebWorker for the Chat Network functionality in Lvce Editor.
