@@ -1,10 +1,10 @@
 {
-  "name": "@lvce-editor/chat-network-worker",
+  "name": "@lvce-editor/chat-message-parsing-worker",
   "version": "0.0.0-dev",
   "description": "Chat Network Worker",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/lvce-editor/chat-network-worker.git"
+    "url": "git+https://github.com/lvce-editor/chat-message-parsing-worker.git"
   },
   "license": "MIT",
   "author": "Lvce Editor",

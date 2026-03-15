@@ -1,5 +1,5 @@
 {
-  "name": "@lvce-editor/chat-network-worker-monorepo",
+  "name": "@lvce-editor/chat-message-parsing-worker-monorepo",
   "version": "0.0.0-dev",
   "license": "MIT",
   "type": "module",

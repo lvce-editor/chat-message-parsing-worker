@@ -42,8 +42,8 @@ const bundle = async (options: RollupOptions) => {
 
 export const bundleDebugViewJs = async () => {
   const options = getOptions(
-    join(root, 'packages/chat-network-worker/src/chatNetworkWorkerMain.ts'),
-    join(root, '.tmp/dist-chat-network-worker/dist/chatNetworkWorkerMain.js'),
+    join(root, 'packages/chat-message-parsing-worker/src/chatNetworkWorkerMain.ts'),
+    join(root, '.tmp/dist-chat-message-parsing-worker/dist/chatNetworkWorkerMain.js'),
     ['ws', 'electron'],
   )
   await bundle(options)
