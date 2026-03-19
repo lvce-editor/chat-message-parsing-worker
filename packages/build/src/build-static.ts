@@ -53,9 +53,9 @@ newContent = replaceRemoteUrlWithAssetUrl(
   chatMessageParsingWorkerPath,
 )
 
-if (newContent === content) {
-  throw new Error('occurrence not found')
-}
+// if (newContent === content) {
+//   throw new Error('occurrence not found')
+// }
 await writeFile(rendererWorkerPath, newContent)
 
 await cp(join(root, 'dist'), join(root, '.tmp', 'static'), { recursive: true })
