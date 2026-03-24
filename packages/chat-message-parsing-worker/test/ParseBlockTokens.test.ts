@@ -1,8 +1,8 @@
 import { expect, test } from '@jest/globals'
-import { parseBlockTokens } from '../src/parts/ParseMessageContent/ParseBlockTokens.ts'
 import type { BlockToken } from '../src/parts/ParseMessageContent/ScanBlockTokens.ts'
+import { parseBlockTokens } from '../src/parts/ParseMessageContent/ParseBlockTokens.ts'
 
-const textNode = (text: string) => ({
+const textNode = (text: string): ReturnType<typeof parseBlockTokens>[number] => ({
   children: [{ text, type: 'text' as const }],
   type: 'text' as const,
 })
@@ -29,11 +29,7 @@ test('parseBlockTokens should parse code block with language', () => {
     { text: 'after', type: 'paragraph-line' },
   ]
 
-  expect(parseBlockTokens(tokens)).toEqual([
-    textNode('before'),
-    { language: 'ts', text: 'const x = 1', type: 'code-block' },
-    textNode('after'),
-  ])
+  expect(parseBlockTokens(tokens)).toEqual([textNode('before'), { language: 'ts', text: 'const x = 1', type: 'code-block' }, textNode('after')])
 })
 
 test('parseBlockTokens should parse code block without language', () => {
