@@ -2,19 +2,24 @@ import type { VirtualDomNode } from '@lvce-editor/virtual-dom-worker'
 
 export type MessageIntermediateNode =
   | MessageTextNode
+  | MessageBlockQuoteNode
   | MessageHeadingNode
   | MessageOrderedListNode
   | MessageUnorderedListNode
   | MessageTableNode
   | MessageCodeBlockNode
   | MessageMathBlockNode
+  | MessageThematicBreakNode
   | MessageMathBlockDomNode
 
 export type MessageInlineNode =
   | MessageInlineTextNode
   | MessageInlineLinkNode
+  | MessageInlineImageNode
   | MessageInlineBoldNode
   | MessageInlineItalicNode
+  | MessageInlineStrikethroughNode
+  | MessageInlineCodeNode
   | MessageMathInlineNode
   | MessageMathInlineDomNode
 
@@ -29,6 +34,12 @@ export interface MessageInlineLinkNode {
   readonly type: 'link'
 }
 
+export interface MessageInlineImageNode {
+  readonly alt: string
+  readonly src: string
+  readonly type: 'image'
+}
+
 export interface MessageInlineBoldNode {
   readonly children: readonly MessageInlineNode[]
   readonly type: 'bold'
@@ -37,6 +48,16 @@ export interface MessageInlineBoldNode {
 export interface MessageInlineItalicNode {
   readonly children: readonly MessageInlineNode[]
   readonly type: 'italic'
+}
+
+export interface MessageInlineStrikethroughNode {
+  readonly children: readonly MessageInlineNode[]
+  readonly type: 'strikethrough'
+}
+
+export interface MessageInlineCodeNode {
+  readonly text: string
+  readonly type: 'inline-code'
 }
 
 export interface MessageMathInlineNode {
@@ -61,6 +82,11 @@ export interface MessageHeadingNode {
   readonly type: 'heading'
 }
 
+export interface MessageBlockQuoteNode {
+  readonly children: readonly MessageIntermediateNode[]
+  readonly type: 'blockquote'
+}
+
 export interface MessageOrderedListNode {
   readonly items: readonly MessageListItemNode[]
   readonly type: 'ordered-list'
@@ -74,6 +100,7 @@ export interface MessageUnorderedListNode {
 export interface MessageListItemNode {
   readonly children: readonly MessageInlineNode[]
   readonly nestedItems?: readonly MessageListItemNode[]
+  readonly nestedListType?: 'ordered-list' | 'unordered-list'
   readonly type: 'list-item'
 }
 
@@ -102,6 +129,10 @@ export interface MessageCodeBlockNode {
 export interface MessageMathBlockNode {
   readonly text: string
   readonly type: 'math-block'
+}
+
+export interface MessageThematicBreakNode {
+  readonly type: 'thematic-break'
 }
 
 export interface MessageMathBlockDomNode {

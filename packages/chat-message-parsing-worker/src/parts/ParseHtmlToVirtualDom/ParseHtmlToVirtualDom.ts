@@ -26,6 +26,14 @@ type ReadonlyHtmlNode = ReadonlyHtmlElementNode | HtmlTextNode
 const maxHtmlLength = 40_000
 const tokenRegex = /<!--[\s\S]*?-->|<\/?[a-zA-Z][\w:-]*(?:\s[^<>]*?)?>|[^<]+/g
 const attributeRegex = /([^\s=/>]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g
+const scriptTagRegex = /<script\b[\s\S]*?<\/script>/gi
+const styleTagRegex = /<style\b[\s\S]*?<\/style>/gi
+const headTagRegex = /<head\b[\s\S]*?<\/head>/gi
+const metaTagRegex = /<meta\b[^>]*>/gi
+const linkTagRegex = /<link\b[^>]*>/gi
+const tagPrefixRegex = /^<\/?\s*[a-zA-Z][\w:-]*/
+const tagSuffixRegex = /\/?\s*>$/
+const openTagNameRegex = /^<\s*([a-zA-Z][\w:-]*)/
 
 const inlineTags = new Set(['a', 'abbr', 'b', 'code', 'em', 'i', 'label', 'small', 'span', 'strong', 'sub', 'sup', 'u'])
 
@@ -34,11 +42,11 @@ const voidElements = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img',
 const sanitizeHtml = (value: string): string => {
   return value
     .slice(0, maxHtmlLength)
-    .replaceAll(/<script\b[\s\S]*?<\/script>/gi, '')
-    .replaceAll(/<style\b[\s\S]*?<\/style>/gi, '')
-    .replaceAll(/<head\b[\s\S]*?<\/head>/gi, '')
-    .replaceAll(/<meta\b[^>]*>/gi, '')
-    .replaceAll(/<link\b[^>]*>/gi, '')
+    .replaceAll(scriptTagRegex, '')
+    .replaceAll(styleTagRegex, '')
+    .replaceAll(headTagRegex, '')
+    .replaceAll(metaTagRegex, '')
+    .replaceAll(linkTagRegex, '')
 }
 
 const decodeEntities = (value: string): string => {
@@ -52,10 +60,7 @@ const decodeEntities = (value: string): string => {
 }
 
 const parseAttributes = (token: string): Record<string, string> => {
-  const withoutTag = token
-    .replace(/^<\/?\s*[a-zA-Z][\w:-]*/, '')
-    .replace(/\/?\s*>$/, '')
-    .trim()
+  const withoutTag = token.replace(tagPrefixRegex, '').replace(tagSuffixRegex, '').trim()
 
   if (!withoutTag) {
     return Object.create(null) as Record<string, string>
@@ -112,7 +117,7 @@ const parseHtml = (value: string): readonly HtmlNode[] => {
     }
 
     if (token.startsWith('<')) {
-      const openTagNameMatch = /^<\s*([a-zA-Z][\w:-]*)/.exec(token)
+      const openTagNameMatch = openTagNameRegex.exec(token)
       if (!openTagNameMatch) {
         continue
       }
@@ -316,6 +321,7 @@ const getElementAttributes = (node: ReadonlyHtmlElementNode): Record<string, unk
   return attributes
 }
 
+// eslint-disable-next-line @typescript-eslint/prefer-readonly-parameter-types
 const toVirtualDom = (node: ReadonlyHtmlNode): readonly VirtualDomNode[] => {
   if (node.type === 'text') {
     return [text(node.value)]

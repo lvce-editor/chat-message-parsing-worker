@@ -1,10 +1,12 @@
 export type BlockToken =
   | BlockBlankToken
+  | BlockBlockQuoteLineToken
   | BlockCodeToken
   | BlockHeadingLineToken
   | BlockMathToken
   | BlockOrderedListItemLineToken
   | BlockParagraphLineToken
+  | BlockThematicBreakToken
   | BlockTableRowLineToken
   | BlockUnorderedListItemLineToken
 
@@ -17,6 +19,11 @@ interface BlockParagraphLineToken {
   readonly type: 'paragraph-line'
 }
 
+interface BlockBlockQuoteLineToken {
+  readonly text: string
+  readonly type: 'blockquote-line'
+}
+
 interface BlockHeadingLineToken {
   readonly level: 1 | 2 | 3 | 4 | 5 | 6
   readonly text: string
@@ -24,6 +31,7 @@ interface BlockHeadingLineToken {
 }
 
 interface BlockOrderedListItemLineToken {
+  readonly indentation: number
   readonly text: string
   readonly type: 'ordered-list-item-line'
 }
@@ -51,12 +59,17 @@ interface BlockMathToken {
   readonly type: 'math-block'
 }
 
+interface BlockThematicBreakToken {
+  readonly type: 'thematic-break'
+}
+
 interface ParsedHeadingLine {
   readonly level: 1 | 2 | 3 | 4 | 5 | 6
   readonly text: string
 }
 
 interface ParsedOrderedListItemLine {
+  readonly indentation: number
   readonly text: string
 }
 
@@ -66,25 +79,29 @@ interface ParsedUnorderedListItemLine {
 }
 
 const markdownMathBlockDelimiter = '$$'
+const escapedNewlineRegex = /\\r\\n|\\n/g
+const lineBreakRegex = /\r?\n/
+const tableDelimiterRegex = /\|\s*[-:]{3,}/
+const inlineTableCellRegex = /\|\s+\|/g
 
 const normalizeEscapedNewlines = (value: string): string => {
   if (value.includes('\\n')) {
-    return value.replaceAll(/\\r\\n|\\n/g, '\n')
+    return value.replaceAll(escapedNewlineRegex, '\n')
   }
   return value
 }
 
 const normalizeInlineTables = (value: string): string => {
   return value
-    .split(/\r?\n/)
+    .split(lineBreakRegex)
     .map((line) => {
       if (!line.includes('|')) {
         return line
       }
-      if (!/\|\s*[-:]{3,}/.test(line)) {
+      if (!tableDelimiterRegex.test(line)) {
         return line
       }
-      return line.replaceAll(/\|\s+\|/g, '|\n|')
+      return line.replaceAll(inlineTableCellRegex, '|\n|')
     })
     .join('\n')
 }
@@ -109,10 +126,11 @@ const parseHeadingLine = (line: string): ParsedHeadingLine | undefined => {
 }
 
 const parseOrderedListItemLine = (line: string): ParsedOrderedListItemLine | undefined => {
-  let index = 0
-  while (index < line.length && line[index] === ' ') {
-    index++
+  let indentation = 0
+  while (indentation < line.length && line[indentation] === ' ') {
+    indentation++
   }
+  let index = indentation
   const firstDigit = index
   while (index < line.length && line[index] >= '0' && line[index] <= '9') {
     index++
@@ -128,6 +146,7 @@ const parseOrderedListItemLine = (line: string): ParsedOrderedListItemLine | und
     index++
   }
   return {
+    indentation,
     text: line.slice(index),
   }
 }
@@ -154,12 +173,55 @@ const parseUnorderedListItemLine = (line: string): ParsedUnorderedListItemLine |
   }
 }
 
+const parseBlockQuoteLine = (line: string): string | undefined => {
+  const trimmedStart = line.trimStart()
+  if (!trimmedStart.startsWith('>')) {
+    return undefined
+  }
+  const content = trimmedStart.slice(1)
+  if (!content) {
+    return ''
+  }
+  if (content.startsWith(' ')) {
+    return content.slice(1)
+  }
+  return content
+}
+
+const isThematicBreakLine = (line: string): boolean => {
+  const trimmedStart = line.trimStart()
+  const leadingSpaces = line.length - trimmedStart.length
+  if (leadingSpaces > 3) {
+    return false
+  }
+  const trimmed = trimmedStart.trimEnd()
+  if (!trimmed) {
+    return false
+  }
+  const marker = trimmed[0]
+  if (marker !== '-' && marker !== '_' && marker !== '*') {
+    return false
+  }
+  let markerCount = 0
+  for (let i = 0; i < trimmed.length; i++) {
+    const char = trimmed[i]
+    if (char === marker) {
+      markerCount++
+      continue
+    }
+    if (char !== ' ') {
+      return false
+    }
+  }
+  return markerCount >= 3
+}
+
 const isTableRow = (line: string): boolean => {
   const trimmed = line.trim()
   if (!trimmed.startsWith('|') || !trimmed.endsWith('|')) {
     return false
   }
-  return trimmed.length > 2 && trimmed.slice(1, -1).includes('|')
+  return trimmed.length > 2
 }
 
 const getTableCells = (line: string): readonly string[] => {
@@ -172,7 +234,7 @@ const getTableCells = (line: string): readonly string[] => {
 
 export const scanBlockTokens = (rawMessage: string): readonly BlockToken[] => {
   const normalizedMessage = normalizeInlineTables(normalizeEscapedNewlines(rawMessage))
-  const lines = normalizedMessage.split(/\r?\n/)
+  const lines = normalizedMessage.split(lineBreakRegex)
   const tokens: BlockToken[] = []
 
   for (let i = 0; i < lines.length; i++) {
@@ -182,6 +244,15 @@ export const scanBlockTokens = (rawMessage: string): readonly BlockToken[] => {
     if (!trimmed) {
       tokens.push({
         type: 'blank-line',
+      })
+      continue
+    }
+
+    const blockQuoteLine = parseBlockQuoteLine(line)
+    if (blockQuoteLine !== undefined) {
+      tokens.push({
+        text: blockQuoteLine,
+        type: 'blockquote-line',
       })
       continue
     }
@@ -239,9 +310,17 @@ export const scanBlockTokens = (rawMessage: string): readonly BlockToken[] => {
       continue
     }
 
+    if (isThematicBreakLine(line)) {
+      tokens.push({
+        type: 'thematic-break',
+      })
+      continue
+    }
+
     const ordered = parseOrderedListItemLine(line)
     if (ordered) {
       tokens.push({
+        indentation: ordered.indentation,
         text: ordered.text,
         type: 'ordered-list-item-line',
       })
