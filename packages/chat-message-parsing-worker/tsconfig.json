@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "lib": ["esnext", "webworker", "webworker.iterable"],
+    "checkJs": true,
+    "target": "esnext",
+    "types": ["node"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "noEmit": true,
+    "allowSyntheticDefaultImports": true,
+    "isolatedModules": true,
+    "assumeChangesOnlyAffectDirectDependencies": true,
+    "strict": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitAny": true,
+    "composite": true,
+    "allowImportingTsExtensions": true,
+    "rootDir": ".",
+    "forceConsistentCasingInFileNames": true,
+    "noImplicitReturns": true,
+    "noUnusedLocals": true,
+    "noUncheckedSideEffectImports": true
+  },
+  "include": ["src", "test"]
+}
