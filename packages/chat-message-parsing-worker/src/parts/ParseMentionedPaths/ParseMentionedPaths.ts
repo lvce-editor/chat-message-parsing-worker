@@ -2,6 +2,7 @@ import { isPathTraversalAttempt } from '../IsPathTraversalAttempt/IsPathTraversa
 import { normalizeRelativePath } from '../NormalizeRelativePath/NormalizeRelativePath.ts'
 
 const mentionRegex = /(^|\s)@([^\s]+)/g
+const trailingPunctuationRegex = /[),.;:!?]+$/g
 const maxMentionCount = 5
 
 export const parseMentionedPaths = (value: string): readonly string[] => {
@@ -9,7 +10,7 @@ export const parseMentionedPaths = (value: string): readonly string[] => {
   const paths: string[] = []
   for (const match of matches) {
     const rawPath = match[2] || ''
-    const cleanedPath = rawPath.replaceAll(/[),.;:!?]+$/g, '')
+    const cleanedPath = rawPath.replaceAll(trailingPunctuationRegex, '')
     if (!cleanedPath || isPathTraversalAttempt(cleanedPath)) {
       continue
     }
