@@ -1,9 +1,9 @@
 import { MessagePortRpcClient } from '@lvce-editor/rpc'
-import * as NetworkCommandMap from '../CommandMap/NetworkCommandMap.ts'
+import * as NetworkCommandMap from '../CommandMap/CommandMap.ts'
 
 export const handleMessagePort = async (port: MessagePort): Promise<void> => {
   await MessagePortRpcClient.create({
-    commandMap: NetworkCommandMap.networkCommandMap,
+    commandMap: NetworkCommandMap.commandMap,
     messagePort: port,
   })
 }
