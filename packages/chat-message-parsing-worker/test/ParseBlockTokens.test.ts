@@ -1,6 +1,6 @@
 import { expect, test } from '@jest/globals'
-import type { BlockToken } from '../src/parts/ParseMessageContent/ScanBlockTokens.ts'
-import { parseBlockTokens } from '../src/parts/ParseMessageContent/ParseBlockTokens.ts'
+import type { BlockToken } from '../src/parts/ParseMessageContent/ScanBlockTokens/ScanBlockTokens.ts'
+import { parseBlockTokens } from '../src/parts/ParseBlockTokens/ParseBlockTokens.ts'
 
 const textNode = (text: string): ReturnType<typeof parseBlockTokens>[number] => ({
   children: [{ text, type: 'text' as const }],
