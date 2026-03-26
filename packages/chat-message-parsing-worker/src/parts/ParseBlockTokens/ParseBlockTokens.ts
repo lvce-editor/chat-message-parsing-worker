@@ -4,8 +4,8 @@ import type {
   MessageTableCellNode,
   MessageTableRowNode,
 } from '../ParseMessageContentTypes/ParseMessageContentTypes.ts'
-import { parseInlineNodes } from './ParseInlineNodes.ts'
-import { type BlockToken, scanBlockTokens } from './ScanBlockTokens.ts'
+import { parseInlineNodes } from '../ParseInlineNodes/ParseInlineNodes.ts'
+import { type BlockToken, scanBlockTokens } from '../ScanBlockTokens/ScanBlockTokens.ts'
 
 const isTableSeparatorCell = (value: string): boolean => {
   if (!value) {
