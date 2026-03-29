@@ -46,7 +46,7 @@
     "@jest/globals": "^30.3.0",
     "@lvce-editor/i18n": "^2.1.0",
     "@lvce-editor/rpc": "^6.4.0",
-    "@lvce-editor/virtual-dom-worker": "^9.5.0",
+    "@lvce-editor/virtual-dom-worker": "^9.6.0",
     "jest": "^30.3.0",
     "ts-jest": "^29.4.6"
   },
