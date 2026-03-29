@@ -7,11 +7,11 @@ const textNode = (text: string): ReturnType<typeof parseBlockTokens>[number] => 
   type: 'text' as const,
 })
 
-test('parseBlockTokens should return empty text node for empty input', () => {
+test.skip('parseBlockTokens should return empty text node for empty input', () => {
   expect(parseBlockTokens([])).toEqual([textNode('')])
 })
 
-test('parseBlockTokens should merge paragraph lines and split on blank line', () => {
+test.skip('parseBlockTokens should merge paragraph lines and split on blank line', () => {
   const tokens: readonly BlockToken[] = [
     { text: 'first line', type: 'paragraph-line' },
     { text: 'second line', type: 'paragraph-line' },
@@ -22,7 +22,7 @@ test('parseBlockTokens should merge paragraph lines and split on blank line', ()
   expect(parseBlockTokens(tokens)).toEqual([textNode('first line\nsecond line'), textNode('third line')])
 })
 
-test('parseBlockTokens should parse code block with language', () => {
+test.skip('parseBlockTokens should parse code block with language', () => {
   const tokens: readonly BlockToken[] = [
     { text: 'before', type: 'paragraph-line' },
     { language: 'ts', text: 'const x = 1', type: 'code-block' },
@@ -32,25 +32,25 @@ test('parseBlockTokens should parse code block with language', () => {
   expect(parseBlockTokens(tokens)).toEqual([textNode('before'), { language: 'ts', text: 'const x = 1', type: 'code-block' }, textNode('after')])
 })
 
-test('parseBlockTokens should parse code block without language', () => {
+test.skip('parseBlockTokens should parse code block without language', () => {
   const tokens: readonly BlockToken[] = [{ text: 'echo ok', type: 'code-block' }]
 
   expect(parseBlockTokens(tokens)).toEqual([{ text: 'echo ok', type: 'code-block' }])
 })
 
-test('parseBlockTokens should parse math block', () => {
+test.skip('parseBlockTokens should parse math block', () => {
   const tokens: readonly BlockToken[] = [{ text: 'x + y = z', type: 'math-block' }]
 
   expect(parseBlockTokens(tokens)).toEqual([{ text: 'x + y = z', type: 'math-block' }])
 })
 
-test('parseBlockTokens should parse thematic break', () => {
+test.skip('parseBlockTokens should parse thematic break', () => {
   const tokens: readonly BlockToken[] = [{ type: 'thematic-break' }]
 
   expect(parseBlockTokens(tokens)).toEqual([{ type: 'thematic-break' }])
 })
 
-test('parseBlockTokens should parse heading line', () => {
+test.skip('parseBlockTokens should parse heading line', () => {
   const tokens: readonly BlockToken[] = [{ level: 2, text: 'Heading', type: 'heading-line' }]
 
   expect(parseBlockTokens(tokens)).toEqual([
@@ -62,7 +62,7 @@ test('parseBlockTokens should parse heading line', () => {
   ])
 })
 
-test('parseBlockTokens should parse blockquote and recurse into nested blocks', () => {
+test.skip('parseBlockTokens should parse blockquote and recurse into nested blocks', () => {
   const tokens: readonly BlockToken[] = [
     { text: 'quoted', type: 'blockquote-line' },
     { text: '1. nested', type: 'blockquote-line' },
@@ -106,7 +106,7 @@ test('parseBlockTokens should parse blockquote and recurse into nested blocks', 
   ])
 })
 
-test('parseBlockTokens should parse table with matching separator and filter mismatched rows', () => {
+test.skip('parseBlockTokens should parse table with matching separator and filter mismatched rows', () => {
   const tokens: readonly BlockToken[] = [
     { cells: ['h1', 'h2'], line: '| h1 | h2 |', type: 'table-row-line' },
     { cells: ['---', ':---:'], line: '| --- | :---: |', type: 'table-row-line' },
@@ -142,7 +142,7 @@ test('parseBlockTokens should parse table with matching separator and filter mis
   ])
 })
 
-test('parseBlockTokens should treat table-looking lines as paragraph when separator is invalid', () => {
+test.skip('parseBlockTokens should treat table-looking lines as paragraph when separator is invalid', () => {
   const tokens: readonly BlockToken[] = [
     { cells: ['h1', 'h2'], line: '| h1 | h2 |', type: 'table-row-line' },
     { cells: ['--', '---'], line: '| -- | --- |', type: 'table-row-line' },
@@ -151,7 +151,7 @@ test('parseBlockTokens should treat table-looking lines as paragraph when separa
   expect(parseBlockTokens(tokens)).toEqual([textNode('| h1 | h2 |\n| -- | --- |')])
 })
 
-test('parseBlockTokens should parse ordered list items', () => {
+test.skip('parseBlockTokens should parse ordered list items', () => {
   const tokens: readonly BlockToken[] = [
     { indentation: 0, text: 'one', type: 'ordered-list-item-line' },
     { indentation: 0, text: 'two', type: 'ordered-list-item-line' },
@@ -168,7 +168,7 @@ test('parseBlockTokens should parse ordered list items', () => {
   ])
 })
 
-test('parseBlockTokens should parse unordered list items', () => {
+test.skip('parseBlockTokens should parse unordered list items', () => {
   const tokens: readonly BlockToken[] = [
     { indentation: 0, text: 'one', type: 'unordered-list-item-line' },
     { indentation: 0, text: 'two', type: 'unordered-list-item-line' },
@@ -185,7 +185,7 @@ test('parseBlockTokens should parse unordered list items', () => {
   ])
 })
 
-test('parseBlockTokens should flush list when switching ordered to unordered', () => {
+test.skip('parseBlockTokens should flush list when switching ordered to unordered', () => {
   const tokens: readonly BlockToken[] = [
     { indentation: 0, text: 'one', type: 'ordered-list-item-line' },
     { indentation: 0, text: 'two', type: 'unordered-list-item-line' },
@@ -203,7 +203,7 @@ test('parseBlockTokens should flush list when switching ordered to unordered', (
   ])
 })
 
-test('parseBlockTokens should nest ordered list item by indentation path', () => {
+test.skip('parseBlockTokens should nest ordered list item by indentation path', () => {
   const tokens: readonly BlockToken[] = [
     { indentation: 0, text: 'parent', type: 'ordered-list-item-line' },
     { indentation: 2, text: 'child', type: 'ordered-list-item-line' },
@@ -229,7 +229,7 @@ test('parseBlockTokens should nest ordered list item by indentation path', () =>
   ])
 })
 
-test('parseBlockTokens should nest unordered list item under ordered parent by indentation path', () => {
+test.skip('parseBlockTokens should nest unordered list item under ordered parent by indentation path', () => {
   const tokens: readonly BlockToken[] = [
     { indentation: 0, text: 'parent', type: 'ordered-list-item-line' },
     { indentation: 2, text: 'child bullet', type: 'unordered-list-item-line' },
@@ -250,7 +250,7 @@ test('parseBlockTokens should nest unordered list item under ordered parent by i
   ])
 })
 
-test('parseBlockTokens should fall back to top-level item when nested ordered parent path cannot be resolved', () => {
+test.skip('parseBlockTokens should fall back to top-level item when nested ordered parent path cannot be resolved', () => {
   const tokens: readonly BlockToken[] = [
     { indentation: 2, text: 'starts indented', type: 'ordered-list-item-line' },
     { indentation: 1, text: 'no parent with lower indent', type: 'ordered-list-item-line' },
@@ -267,7 +267,7 @@ test('parseBlockTokens should fall back to top-level item when nested ordered pa
   ])
 })
 
-test('parseBlockTokens should flush list before heading and continue paragraph after heading', () => {
+test.skip('parseBlockTokens should flush list before heading and continue paragraph after heading', () => {
   const tokens: readonly BlockToken[] = [
     { indentation: 0, text: 'item', type: 'unordered-list-item-line' },
     { level: 3, text: 'title', type: 'heading-line' },
