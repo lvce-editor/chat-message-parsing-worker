@@ -321,7 +321,6 @@ const getElementAttributes = (node: ReadonlyHtmlElementNode): Record<string, unk
   return attributes
 }
 
-// eslint-disable-next-line @typescript-eslint/prefer-readonly-parameter-types
 const toVirtualDom = (node: ReadonlyHtmlNode): readonly VirtualDomNode[] => {
   if (node.type === 'text') {
     return [text(node.value)]
