@@ -1,6 +1,7 @@
 import { expect, test } from '@jest/globals'
 import { parseMessageContents } from '../src/parts/ParseMessageContents/ParseMessageContents.ts'
 
+<<<<<<< Updated upstream
 const orderedListItem = (text: string, index: number) => ({
   children: [
     {
@@ -13,6 +14,9 @@ const orderedListItem = (text: string, index: number) => ({
 })
 
 test('parseMessageContents should parse each message independently', () => {
+=======
+test('parseMessageContents should parse each message independently', (): void => {
+>>>>>>> Stashed changes
   expect(parseMessageContents(['hello', '1. first\n2. second'])).toEqual([
     [
       {
@@ -34,6 +38,6 @@ test('parseMessageContents should parse each message independently', () => {
   ])
 })
 
-test('parseMessageContents should return an empty array for no messages', () => {
+test('parseMessageContents should return an empty array for no messages', (): void => {
   expect(parseMessageContents([])).toEqual([])
 })
