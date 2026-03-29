@@ -1,8 +1,7 @@
 import { expect, test } from '@jest/globals'
 import { parseMessageContents } from '../src/parts/ParseMessageContents/ParseMessageContents.ts'
 
-<<<<<<< Updated upstream
-const orderedListItem = (text: string, index: number) => ({
+const orderedListItem = (text: string, index: number): { children: readonly [{ text: string; type: 'text' }]; index: number; type: 'list-item' } => ({
   children: [
     {
       text,
@@ -13,10 +12,7 @@ const orderedListItem = (text: string, index: number) => ({
   type: 'list-item' as const,
 })
 
-test('parseMessageContents should parse each message independently', () => {
-=======
 test('parseMessageContents should parse each message independently', (): void => {
->>>>>>> Stashed changes
   expect(parseMessageContents(['hello', '1. first\n2. second'])).toEqual([
     [
       {
