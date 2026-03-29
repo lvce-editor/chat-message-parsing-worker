@@ -2,6 +2,6 @@ import type { MessageIntermediateNode } from '../ParseMessageContentTypes/ParseM
 import { parseBlockTokens } from './ParseBlockTokens.ts'
 import { scanBlockTokens } from './ScanBlockTokens.ts'
 
-export const parseMessageContent = async (rawMessage: string): Promise<readonly MessageIntermediateNode[]> => {
+export const parseMessageContent = (rawMessage: string): readonly MessageIntermediateNode[] => {
   return parseBlockTokens(scanBlockTokens(rawMessage))
 }
