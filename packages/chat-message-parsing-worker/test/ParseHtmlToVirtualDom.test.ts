@@ -171,3 +171,74 @@ test('parseHtmlToVirtualDom should map ul to ul type', () => {
     }),
   ])
 })
+
+test('parseHtmlToVirtualDom should remove dangerous tags and inline event attributes', () => {
+  const result = ParseHtmlToVirtualDom.parseHtmlToVirtualDom(
+    '<head><title>ignored</title></head><!-- comment --><p onclick="alert(1)">Hi</p><script>alert(1)</script><style>p{}</style><meta charset="utf-8"><link rel="stylesheet" href="/x.css">',
+  )
+
+  expect(result).toEqual([
+    {
+      childCount: 1,
+      type: VirtualDomElements.P,
+    },
+    expect.objectContaining({
+      text: 'Hi',
+    }),
+  ])
+})
+
+test('parseHtmlToVirtualDom should preserve safe element attributes and boolean flags', () => {
+  const result = ParseHtmlToVirtualDom.parseHtmlToVirtualDom(
+    '<input checked disabled readonly value="1" placeholder="Type here" title="Title" name="field" id="input-id" class="field" style="color:red" />',
+  )
+
+  expect(result[0]).toEqual({
+    checked: true,
+    childCount: 0,
+    className: 'field',
+    disabled: true,
+    id: 'input-id',
+    name: 'field',
+    placeholder: 'Type here',
+    readOnly: true,
+    style: 'color:red',
+    title: 'Title',
+    type: VirtualDomElements.Input,
+    value: '1',
+  })
+})
+
+test('parseHtmlToVirtualDom should parse explicit false boolean attributes', () => {
+  const result = ParseHtmlToVirtualDom.parseHtmlToVirtualDom('<input checked="false" disabled="false" readonly="false" />')
+
+  expect(result[0]).toEqual({
+    checked: false,
+    childCount: 0,
+    disabled: false,
+    readOnly: false,
+    type: VirtualDomElements.Input,
+  })
+})
+
+test('parseHtmlToVirtualDom should map unknown inline and block tags and decode entities', () => {
+  const result = ParseHtmlToVirtualDom.parseHtmlToVirtualDom('<u title="Fish &amp; Chips">Tom &amp; Jerry</u><custom-box>Block</custom-box>')
+
+  expect(result).toEqual([
+    {
+      childCount: 1,
+      title: 'Fish & Chips',
+      type: VirtualDomElements.Span,
+    },
+    expect.objectContaining({
+      text: 'Tom & Jerry',
+    }),
+    {
+      childCount: 1,
+      type: VirtualDomElements.Div,
+    },
+    expect.objectContaining({
+      text: 'Block',
+    }),
+  ])
+})
