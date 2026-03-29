@@ -1,9 +1,11 @@
 import type {
+  MessageInlineNode,
   MessageIntermediateNode,
   MessageListItemNode,
   MessageTableCellNode,
   MessageTableRowNode,
 } from '../ParseMessageContentTypes/ParseMessageContentTypes.ts'
+import { highlightCode } from '../HighlightCode/HighlightCode.ts'
 import { parseInlineNodes } from './ParseInlineNodes.ts'
 import { type BlockToken, scanBlockTokens } from './ScanBlockTokens.ts'
 
@@ -67,7 +69,6 @@ const getEmptyTextNode = (): readonly MessageIntermediateNode[] => {
   ]
 }
 
-// eslint-disable-next-line @typescript-eslint/prefer-readonly-parameter-types
 export const parseBlockTokens = (tokens: readonly BlockToken[]): readonly MessageIntermediateNode[] => {
   if (tokens.length === 0) {
     return getEmptyTextNode()
@@ -78,6 +79,15 @@ export const parseBlockTokens = (tokens: readonly BlockToken[]): readonly Messag
   let listItems: MessageListItemNode[] = []
   let listType: 'ordered-list' | 'unordered-list' | '' = ''
   let orderedListPathStack: Array<{ readonly indentation: number; readonly path: readonly number[] }> = []
+  let canContinueOrderedListItemParagraph = false
+
+  const createListItem = (text: string, index?: number): MessageListItemNode => {
+    return {
+      children: parseInlineNodes(text),
+      ...(index === undefined ? {} : { index }),
+      type: 'list-item',
+    }
+  }
 
   const getListItemAtPath = (items: readonly MessageListItemNode[], path: readonly number[]): MessageListItemNode | undefined => {
     let currentItems = items
@@ -116,6 +126,37 @@ export const parseBlockTokens = (tokens: readonly BlockToken[]): readonly Messag
     return [...items.slice(0, index), nextItem, ...items.slice(index + 1)]
   }
 
+  const appendInlineChildrenAtPath = (
+    items: readonly MessageListItemNode[],
+    path: readonly number[],
+    children: MessageListItemNode['children'],
+  ): MessageListItemNode[] => {
+    if (path.length === 0) {
+      return [...items]
+    }
+    const [index, ...rest] = path
+    const current = items[index]
+    if (!current) {
+      return [...items]
+    }
+    const lineBreakNode: MessageInlineNode = {
+      text: '\n',
+      type: 'text',
+    }
+    const nextChildren: MessageInlineNode[] = [...current.children, lineBreakNode, ...children]
+    const nextItem =
+      rest.length > 0
+        ? {
+            ...current,
+            nestedItems: appendInlineChildrenAtPath(current.nestedItems || [], rest, children),
+          }
+        : {
+            ...current,
+            children: nextChildren,
+          }
+    return [...items.slice(0, index), nextItem, ...items.slice(index + 1)]
+  }
+
   const flushParagraph = (): void => {
     if (paragraphLines.length === 0) {
       return
@@ -138,6 +179,7 @@ export const parseBlockTokens = (tokens: readonly BlockToken[]): readonly Messag
     listItems = []
     listType = ''
     orderedListPathStack = []
+    canContinueOrderedListItemParagraph = false
   }
 
   for (let i = 0; i < tokens.length; i++) {
@@ -145,6 +187,7 @@ export const parseBlockTokens = (tokens: readonly BlockToken[]): readonly Messag
 
     if (token.type === 'blank-line') {
       flushParagraph()
+      canContinueOrderedListItemParagraph = false
       continue
     }
 
@@ -153,12 +196,14 @@ export const parseBlockTokens = (tokens: readonly BlockToken[]): readonly Messag
       flushParagraph()
       if (token.language) {
         nodes.push({
+          codeTokens: highlightCode(token.text, token.language),
           language: token.language,
           text: token.text,
           type: 'code-block',
         })
       } else {
         nodes.push({
+          codeTokens: highlightCode(token.text, undefined),
           text: token.text,
           type: 'code-block',
         })
@@ -240,17 +285,15 @@ export const parseBlockTokens = (tokens: readonly BlockToken[]): readonly Messag
         if (parentEntry) {
           const parentItem = getListItemAtPath(listItems, parentEntry.path)
           if (parentItem) {
-            const nextItem: MessageListItemNode = {
-              children: parseInlineNodes(token.text),
-              type: 'list-item',
-            }
             const nextIndex = parentItem.nestedItems?.length || 0
+            const nextItem = createListItem(token.text, nextIndex + 1)
             listItems = appendNestedItemAtPath(listItems, parentEntry.path, nextItem, 'ordered-list')
             const nextPath = [...parentEntry.path, nextIndex]
             orderedListPathStack = [
               ...orderedListPathStack.filter((entry) => entry.indentation < token.indentation),
               { indentation: token.indentation, path: nextPath },
             ]
+            canContinueOrderedListItemParagraph = true
             continue
           }
         }
@@ -260,16 +303,14 @@ export const parseBlockTokens = (tokens: readonly BlockToken[]): readonly Messag
       }
       flushParagraph()
       listType = 'ordered-list'
-      const nextItem: MessageListItemNode = {
-        children: parseInlineNodes(token.text),
-        type: 'list-item',
-      }
+      const nextIndex = listItems.length
+      const nextItem = createListItem(token.text, nextIndex + 1)
       listItems.push(nextItem)
-      const nextIndex = listItems.length - 1
       orderedListPathStack = [
         ...orderedListPathStack.filter((entry) => entry.indentation < token.indentation),
         { indentation: token.indentation, path: [nextIndex] },
       ]
+      canContinueOrderedListItemParagraph = true
       continue
     }
 
@@ -277,11 +318,9 @@ export const parseBlockTokens = (tokens: readonly BlockToken[]): readonly Messag
       if (listType === 'ordered-list' && listItems.length > 0 && token.indentation > 0 && orderedListPathStack.length > 0) {
         const parentEntry = orderedListPathStack.toReversed().find((entry) => entry.indentation < token.indentation)
         if (parentEntry) {
-          const nextItem: MessageListItemNode = {
-            children: parseInlineNodes(token.text),
-            type: 'list-item',
-          }
+          const nextItem = createListItem(token.text)
           listItems = appendNestedItemAtPath(listItems, parentEntry.path, nextItem, 'unordered-list')
+          canContinueOrderedListItemParagraph = false
           continue
         }
       }
@@ -290,10 +329,8 @@ export const parseBlockTokens = (tokens: readonly BlockToken[]): readonly Messag
       }
       flushParagraph()
       listType = 'unordered-list'
-      listItems.push({
-        children: parseInlineNodes(token.text),
-        type: 'list-item',
-      })
+      listItems.push(createListItem(token.text))
+      canContinueOrderedListItemParagraph = false
       continue
     }
 
@@ -308,8 +345,17 @@ export const parseBlockTokens = (tokens: readonly BlockToken[]): readonly Messag
       continue
     }
 
+    if (token.type === 'paragraph-line' && listType === 'ordered-list' && listItems.length > 0 && canContinueOrderedListItemParagraph) {
+      const currentPath = orderedListPathStack.at(-1)?.path
+      if (currentPath) {
+        listItems = appendInlineChildrenAtPath(listItems, currentPath, parseInlineNodes(token.text))
+        continue
+      }
+    }
+
     flushList()
     paragraphLines.push(token.text)
+    canContinueOrderedListItemParagraph = false
   }
 
   flushList()
