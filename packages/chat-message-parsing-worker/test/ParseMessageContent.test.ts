@@ -1,6 +1,17 @@
 import { expect, test } from '@jest/globals'
 import * as ParseMessageContent from '../src/parts/ParseMessageContent/ParseMessageContent.ts'
 
+const orderedListItem = (
+  children: readonly unknown[],
+  index: number,
+  extra: Record<string, unknown> = {},
+): { children: readonly unknown[]; index: number; type: 'list-item' } & Record<string, unknown> => ({
+  children,
+  index,
+  type: 'list-item' as const,
+  ...extra,
+})
+
 test('parseMessageContent should parse mixed paragraph and ordered list blocks', () => {
   const rawMessage = [
     'I have access to the following tools:',
@@ -26,33 +37,33 @@ test('parseMessageContent should parse mixed paragraph and ordered list blocks',
     },
     {
       items: [
-        {
-          children: [
+        orderedListItem(
+          [
             {
               text: 'functions.read_file - Read UTF-8 text content from a file inside the currently open workspace folder. Only pass an absolute URI.',
               type: 'text',
             },
           ],
-          type: 'list-item',
-        },
-        {
-          children: [
+          1,
+        ),
+        orderedListItem(
+          [
             {
               text: 'functions.write_file - Write UTF-8 text content to a file inside the currently open workspace folder.',
               type: 'text',
             },
           ],
-          type: 'list-item',
-        },
-        {
-          children: [
+          2,
+        ),
+        orderedListItem(
+          [
             {
               text: 'functions.list_files - List direct children (files and folders) for a folder inside the currently open workspace folder.',
               type: 'text',
             },
           ],
-          type: 'list-item',
-        },
+          3,
+        ),
       ],
       type: 'ordered-list',
     },
@@ -76,33 +87,9 @@ test('parseMessageContent should keep ordered list items together across blank l
   expect(result).toEqual([
     {
       items: [
-        {
-          children: [
-            {
-              text: 'First item',
-              type: 'text',
-            },
-          ],
-          type: 'list-item',
-        },
-        {
-          children: [
-            {
-              text: 'Second item',
-              type: 'text',
-            },
-          ],
-          type: 'list-item',
-        },
-        {
-          children: [
-            {
-              text: 'Third item',
-              type: 'text',
-            },
-          ],
-          type: 'list-item',
-        },
+        orderedListItem([{ text: 'First item', type: 'text' }], 1),
+        orderedListItem([{ text: 'Second item', type: 'text' }], 2),
+        orderedListItem([{ text: 'Third item', type: 'text' }], 3),
       ],
       type: 'ordered-list',
     },
@@ -151,8 +138,8 @@ test('parseMessageContent should parse markdown links in paragraphs and lists', 
     },
     {
       items: [
-        {
-          children: [
+        orderedListItem(
+          [
             {
               text: 'Climate normals: ',
               type: 'text',
@@ -163,8 +150,8 @@ test('parseMessageContent should parse markdown links in paragraphs and lists', 
               type: 'link',
             },
           ],
-          type: 'list-item',
-        },
+          1,
+        ),
       ],
       type: 'ordered-list',
     },
@@ -683,6 +670,7 @@ test('parseMessageContent should nest indented unordered items inside ordered li
               type: 'text',
             },
           ],
+          index: 1,
           nestedItems: [
             {
               children: [
@@ -713,6 +701,7 @@ test('parseMessageContent should nest indented unordered items inside ordered li
               type: 'text',
             },
           ],
+          index: 2,
           nestedItems: [
             {
               children: [
@@ -742,37 +731,15 @@ test('parseMessageContent should nest indented ordered items inside ordered list
     {
       items: [
         {
-          children: [
-            {
-              text: 'L1',
-              type: 'text',
-            },
-          ],
-          nestedItems: [
-            {
-              children: [
-                {
-                  text: 'L2',
-                  type: 'text',
-                },
-              ],
-              nestedItems: [
-                {
-                  children: [
-                    {
-                      text: 'L3',
-                      type: 'text',
-                    },
-                  ],
-                  type: 'list-item',
-                },
-              ],
-              nestedListType: 'ordered-list',
-              type: 'list-item',
-            },
-          ],
-          nestedListType: 'ordered-list',
-          type: 'list-item',
+          ...orderedListItem([{ text: 'L1', type: 'text' }], 1, {
+            nestedItems: [
+              orderedListItem([{ text: 'L2', type: 'text' }], 1, {
+                nestedItems: [orderedListItem([{ text: 'L3', type: 'text' }], 1)],
+                nestedListType: 'ordered-list',
+              }),
+            ],
+            nestedListType: 'ordered-list',
+          }),
         },
       ],
       type: 'ordered-list',
@@ -1227,6 +1194,27 @@ test('parseMessageContent should parse fenced code blocks', () => {
       type: 'text',
     },
     {
+      codeTokens: [
+        { className: '', text: '{ ' },
+        { className: 'TokenProperty', text: '"jsonrpc"' },
+        { className: '', text: ': ' },
+        { className: 'TokenString', text: '"2.0"' },
+        { className: '', text: ', ' },
+        { className: 'TokenProperty', text: '"method"' },
+        { className: '', text: ': ' },
+        { className: 'TokenString', text: '"subtract"' },
+        { className: '', text: ', ' },
+        { className: 'TokenProperty', text: '"params"' },
+        { className: '', text: ': [' },
+        { className: 'TokenNumber', text: '42' },
+        { className: '', text: ', ' },
+        { className: 'TokenNumber', text: '23' },
+        { className: '', text: '], ' },
+        { className: 'TokenProperty', text: '"id"' },
+        { className: '', text: ': ' },
+        { className: 'TokenNumber', text: '1' },
+        { className: '', text: ' }' },
+      ],
       language: 'json',
       text: '{ "jsonrpc": "2.0", "method": "subtract", "params": [42, 23], "id": 1 }',
       type: 'code-block',
@@ -1418,6 +1406,11 @@ test('parseMessageContent should not parse math inside fenced code blocks', () =
 
   expect(result).toEqual([
     {
+      codeTokens: [
+        { className: 'TokenKeyword', text: 'const' },
+        { className: '', text: ' value = ' },
+        { className: 'TokenString', text: '"$x$"' },
+      ],
       language: 'ts',
       text: 'const value = "$x$"',
       type: 'code-block',

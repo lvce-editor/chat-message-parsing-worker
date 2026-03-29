@@ -7,6 +7,12 @@ const textNode = (text: string): ReturnType<typeof parseBlockTokens>[number] => 
   type: 'text' as const,
 })
 
+const listItem = (text: string, index?: number): { children: readonly [{ text: string; type: 'text' }]; index?: number; type: 'list-item' } => ({
+  children: [{ text, type: 'text' }],
+  ...(index === undefined ? {} : { index }),
+  type: 'list-item',
+})
+
 test('parseBlockTokens should return empty text node for empty input', () => {
   expect(parseBlockTokens([])).toEqual([textNode('')])
 })
@@ -29,13 +35,32 @@ test('parseBlockTokens should parse code block with language', () => {
     { text: 'after', type: 'paragraph-line' },
   ]
 
-  expect(parseBlockTokens(tokens)).toEqual([textNode('before'), { language: 'ts', text: 'const x = 1', type: 'code-block' }, textNode('after')])
+  expect(parseBlockTokens(tokens)).toEqual([
+    textNode('before'),
+    {
+      codeTokens: [
+        { className: 'TokenKeyword', text: 'const' },
+        { className: '', text: ' x = ' },
+        { className: 'TokenNumber', text: '1' },
+      ],
+      language: 'ts',
+      text: 'const x = 1',
+      type: 'code-block',
+    },
+    textNode('after'),
+  ])
 })
 
 test('parseBlockTokens should parse code block without language', () => {
   const tokens: readonly BlockToken[] = [{ text: 'echo ok', type: 'code-block' }]
 
-  expect(parseBlockTokens(tokens)).toEqual([{ text: 'echo ok', type: 'code-block' }])
+  expect(parseBlockTokens(tokens)).toEqual([
+    {
+      codeTokens: [{ className: '', text: 'echo ok' }],
+      text: 'echo ok',
+      type: 'code-block',
+    },
+  ])
 })
 
 test('parseBlockTokens should parse math block', () => {
@@ -76,12 +101,7 @@ test('parseBlockTokens should parse blockquote and recurse into nested blocks', 
       children: [
         textNode('quoted'),
         {
-          items: [
-            {
-              children: [{ text: 'nested', type: 'text' }],
-              type: 'list-item',
-            },
-          ],
+          items: [listItem('nested', 1)],
           type: 'ordered-list',
         },
         {
@@ -159,10 +179,7 @@ test('parseBlockTokens should parse ordered list items', () => {
 
   expect(parseBlockTokens(tokens)).toEqual([
     {
-      items: [
-        { children: [{ text: 'one', type: 'text' }], type: 'list-item' },
-        { children: [{ text: 'two', type: 'text' }], type: 'list-item' },
-      ],
+      items: [listItem('one', 1), listItem('two', 2)],
       type: 'ordered-list',
     },
   ])
@@ -193,11 +210,11 @@ test('parseBlockTokens should flush list when switching ordered to unordered', (
 
   expect(parseBlockTokens(tokens)).toEqual([
     {
-      items: [{ children: [{ text: 'one', type: 'text' }], type: 'list-item' }],
+      items: [listItem('one', 1)],
       type: 'ordered-list',
     },
     {
-      items: [{ children: [{ text: 'two', type: 'text' }], type: 'list-item' }],
+      items: [listItem('two')],
       type: 'unordered-list',
     },
   ])
@@ -215,12 +232,14 @@ test('parseBlockTokens should nest ordered list item by indentation path', () =>
       items: [
         {
           children: [{ text: 'parent', type: 'text' }],
-          nestedItems: [{ children: [{ text: 'child', type: 'text' }], type: 'list-item' }],
+          index: 1,
+          nestedItems: [listItem('child', 1)],
           nestedListType: 'ordered-list',
           type: 'list-item',
         },
         {
           children: [{ text: 'sibling', type: 'text' }],
+          index: 2,
           type: 'list-item',
         },
       ],
@@ -240,7 +259,8 @@ test('parseBlockTokens should nest unordered list item under ordered parent by i
       items: [
         {
           children: [{ text: 'parent', type: 'text' }],
-          nestedItems: [{ children: [{ text: 'child bullet', type: 'text' }], type: 'list-item' }],
+          index: 1,
+          nestedItems: [listItem('child bullet')],
           nestedListType: 'unordered-list',
           type: 'list-item',
         },
@@ -258,10 +278,7 @@ test('parseBlockTokens should fall back to top-level item when nested ordered pa
 
   expect(parseBlockTokens(tokens)).toEqual([
     {
-      items: [
-        { children: [{ text: 'starts indented', type: 'text' }], type: 'list-item' },
-        { children: [{ text: 'no parent with lower indent', type: 'text' }], type: 'list-item' },
-      ],
+      items: [listItem('starts indented', 1), listItem('no parent with lower indent', 2)],
       type: 'ordered-list',
     },
   ])
