@@ -27,10 +27,7 @@ test('parseMessageContents should parse each message independently', () => {
     ],
     [
       {
-        items: [
-          orderedListItem('first', 1),
-          orderedListItem('second', 2),
-        ],
+        items: [orderedListItem('first', 1), orderedListItem('second', 2)],
         type: 'ordered-list',
       },
     ],

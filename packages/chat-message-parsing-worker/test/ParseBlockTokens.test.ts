@@ -101,9 +101,7 @@ test('parseBlockTokens should parse blockquote and recurse into nested blocks', 
       children: [
         textNode('quoted'),
         {
-          items: [
-            listItem('nested', 1),
-          ],
+          items: [listItem('nested', 1)],
           type: 'ordered-list',
         },
         {
@@ -181,10 +179,7 @@ test('parseBlockTokens should parse ordered list items', () => {
 
   expect(parseBlockTokens(tokens)).toEqual([
     {
-      items: [
-        listItem('one', 1),
-        listItem('two', 2),
-      ],
+      items: [listItem('one', 1), listItem('two', 2)],
       type: 'ordered-list',
     },
   ])
@@ -283,10 +278,7 @@ test('parseBlockTokens should fall back to top-level item when nested ordered pa
 
   expect(parseBlockTokens(tokens)).toEqual([
     {
-      items: [
-        listItem('starts indented', 1),
-        listItem('no parent with lower indent', 2),
-      ],
+      items: [listItem('starts indented', 1), listItem('no parent with lower indent', 2)],
       type: 'ordered-list',
     },
   ])
