@@ -1,7 +1,11 @@
 import { expect, test } from '@jest/globals'
 import * as ParseMessageContent from '../src/parts/ParseMessageContent/ParseMessageContent.ts'
 
-const orderedListItem = (children: readonly unknown[], index: number, extra: Record<string, unknown> = {}) => ({
+const orderedListItem = (
+  children: readonly unknown[],
+  index: number,
+  extra: Record<string, unknown> = {},
+): { children: readonly unknown[]; index: number; type: 'list-item' } & Record<string, unknown> => ({
   children,
   index,
   type: 'list-item' as const,
