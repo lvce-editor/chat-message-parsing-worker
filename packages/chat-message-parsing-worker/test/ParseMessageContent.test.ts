@@ -12,6 +12,53 @@ const orderedListItem = (
   ...extra,
 })
 
+test('parseMessageContent should convert absolute README links in assistant text to file uris', () => {
+  const rawMessage = [
+    'Done - I removed the Gitpod section from the README.',
+    '',
+    'Changed file:',
+    '- [README.md](/test/problems-view/README.md)',
+  ].join('\n')
+
+  const result = ParseMessageContent.parseMessageContent(rawMessage)
+
+  expect(result).toEqual([
+    {
+      children: [
+        {
+          text: 'Done - I removed the Gitpod section from the README.',
+          type: 'text',
+        },
+      ],
+      type: 'text',
+    },
+    {
+      children: [
+        {
+          text: 'Changed file:',
+          type: 'text',
+        },
+      ],
+      type: 'text',
+    },
+    {
+      items: [
+        {
+          children: [
+            {
+              href: 'file:///test/problems-view/README.md',
+              text: 'README.md',
+              type: 'link',
+            },
+          ],
+          type: 'list-item',
+        },
+      ],
+      type: 'unordered-list',
+    },
+  ])
+})
+
 test('parseMessageContent should parse mixed paragraph and ordered list blocks', () => {
   const rawMessage = [
     'I have access to the following tools:',

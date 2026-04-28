@@ -57,6 +57,38 @@ test('parseInlineNodes should sanitize unsafe relative links and normalize safe 
   ])
 })
 
+test('parseInlineNodes should convert absolute filesystem links to file uris', () => {
+  expect(
+    parseInlineNodes(
+      '[README.md](/test/problems-view/README.md) [My Notes](/Users/simon/Projects/My Notes) [README.md](C:\\Users\\Simon\\Documents\\My Notes\\README.md)',
+    ),
+  ).toEqual([
+    {
+      href: 'file:///test/problems-view/README.md',
+      text: 'README.md',
+      type: 'link',
+    },
+    {
+      text: ' ',
+      type: 'text',
+    },
+    {
+      href: 'file:///Users/simon/Projects/My%20Notes',
+      text: 'My Notes',
+      type: 'link',
+    },
+    {
+      text: ' ',
+      type: 'text',
+    },
+    {
+      href: 'file:///C:/Users/Simon/Documents/My%20Notes/README.md',
+      text: 'README.md',
+      type: 'link',
+    },
+  ])
+})
+
 test('parseInlineNodes should sanitize non-http images and keep https images', () => {
   expect(parseInlineNodes('![ok](https://example.com/image.png) ![bad](./image.png)')).toEqual([
     {

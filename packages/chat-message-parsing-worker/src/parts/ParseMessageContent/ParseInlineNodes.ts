@@ -2,6 +2,10 @@ import type { MessageInlineNode } from '../ParseMessageContentTypes/ParseMessage
 import { isPathTraversalAttempt } from '../IsPathTraversalAttempt/IsPathTraversalAttempt.ts'
 import { normalizeRelativePath } from '../NormalizeRelativePath/NormalizeRelativePath.ts'
 
+const windowsAbsolutePathRegex = /^[a-zA-Z]:[\\/]/
+const trailingPathSeparatorRegex = /[\\/]+$/
+const windowsDriveSegmentRegex = /^[a-zA-Z]:$/
+
 const isAlphaNumeric = (value: string | undefined): boolean => {
   if (!value) {
     return false
@@ -16,7 +20,60 @@ const isAlphaNumeric = (value: string | undefined): boolean => {
   return code >= 97 && code <= 122
 }
 
-const sanitizeLinkUrl = (url: string): string => {
+const decodeUriComponentSafely = (value: string): string => {
+  try {
+    return decodeURIComponent(value)
+  } catch {
+    return value
+  }
+}
+
+const getPathBaseName = (value: string): string => {
+  const trimmedValue = value.replace(trailingPathSeparatorRegex, '')
+  const normalizedValue = trimmedValue.replaceAll('\\', '/')
+  const lastSeparatorIndex = normalizedValue.lastIndexOf('/')
+  const baseName = lastSeparatorIndex === -1 ? normalizedValue : normalizedValue.slice(lastSeparatorIndex + 1)
+  return decodeUriComponentSafely(baseName)
+}
+
+const encodeFilePath = (value: string): string => {
+  const segments = value.split('/')
+  return segments
+    .map((segment, index) => {
+      if (segment === '' && index === 0) {
+        return ''
+      }
+      if (windowsDriveSegmentRegex.test(segment)) {
+        return segment
+      }
+      return encodeURIComponent(segment)
+    })
+    .join('/')
+}
+
+const toFileUri = (value: string): string => {
+  const normalizedValue = value.replaceAll('\\', '/')
+  if (windowsAbsolutePathRegex.test(value)) {
+    return `file:///${encodeFilePath(normalizedValue)}`
+  }
+  return `file://${encodeFilePath(normalizedValue)}`
+}
+
+const shouldConvertAbsolutePathToFileUri = (url: string, linkText: string | undefined): boolean => {
+  if (!linkText) {
+    return false
+  }
+  if (!url.startsWith('/') && !windowsAbsolutePathRegex.test(url)) {
+    return false
+  }
+  const normalizedText = linkText.trim()
+  if (!normalizedText) {
+    return false
+  }
+  return getPathBaseName(url) === normalizedText
+}
+
+const sanitizeLinkUrl = (url: string, linkText?: string): string => {
   const trimmedUrl = url.trim()
   const normalized = url.trim().toLowerCase()
   if (
@@ -26,6 +83,9 @@ const sanitizeLinkUrl = (url: string): string => {
     normalized.startsWith('vscode-references://')
   ) {
     return trimmedUrl
+  }
+  if (shouldConvertAbsolutePathToFileUri(trimmedUrl, linkText)) {
+    return toFileUri(trimmedUrl)
   }
   if (!trimmedUrl || trimmedUrl.startsWith('#') || trimmedUrl.startsWith('?') || trimmedUrl.startsWith('/') || trimmedUrl.startsWith('\\')) {
     return '#'
@@ -169,7 +229,7 @@ const parseLinkToken = (value: string, start: number): ParsedInlineToken | undef
         return {
           length: index - start + 1,
           node: {
-            href: sanitizeLinkUrl(href),
+            href: sanitizeLinkUrl(href, text),
             text,
             type: 'link',
           },
