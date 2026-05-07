@@ -268,7 +268,8 @@ const consumeBlockquote = (tokens: readonly BlockToken[], start: number): { read
   const lines: string[] = []
   let index = start
   while (index < tokens.length && tokens[index].type === 'blockquote-line') {
-    lines.push(tokens[index].text)
+    const token = tokens[index] as Extract<BlockToken, { type: 'blockquote-line' }>
+    lines.push(token.text)
     index++
   }
   return {
@@ -294,8 +295,9 @@ const consumeTable = (
   const rows: MessageTableRowNode[] = []
   let index = start + 2
   while (index < tokens.length && tokens[index].type === 'table-row-line') {
-    if (tokens[index].cells.length === expectedColumns) {
-      rows.push(toTableRow(tokens[index]))
+    const rowToken = tokens[index] as Extract<BlockToken, { type: 'table-row-line' }>
+    if (rowToken.cells.length === expectedColumns) {
+      rows.push(toTableRow(rowToken))
     }
     index++
   }
@@ -338,6 +340,76 @@ const appendOrderedListParagraph = (state: ParseState, token: Extract<BlockToken
   return true
 }
 
+const processBlockToken = (state: ParseState, tokens: readonly BlockToken[], index: number): number => {
+  const token = tokens[index]
+
+  switch (token.type) {
+    case 'blank-line':
+      flushParagraph(state)
+      state.canContinueOrderedListItemParagraph = false
+      return index + 1
+    case 'blockquote-line': {
+      flushOpenBlocks(state)
+      const blockquote = consumeBlockquote(tokens, index)
+      state.nodes.push(blockquote.node)
+      return blockquote.nextIndex
+    }
+    case 'code-block':
+      flushOpenBlocks(state)
+      pushCodeBlock(state, token)
+      return index + 1
+    case 'heading-line':
+      flushOpenBlocks(state)
+      state.nodes.push({
+        children: parseInlineNodes(token.text),
+        level: token.level,
+        type: 'heading',
+      })
+      return index + 1
+    case 'math-block':
+      flushOpenBlocks(state)
+      state.nodes.push({
+        text: token.text,
+        type: 'math-block',
+      })
+      return index + 1
+    case 'ordered-list-item-line':
+      if (!addNestedOrderedListItem(state, token)) {
+        beginTopLevelOrderedListItem(state, token)
+      }
+      return index + 1
+    case 'paragraph-line':
+      if (!appendOrderedListParagraph(state, token)) {
+        flushList(state)
+        state.paragraphLines.push(token.text)
+        state.canContinueOrderedListItemParagraph = false
+      }
+      return index + 1
+    case 'table-row-line': {
+      const table = consumeTable(tokens, index, token)
+      if (table.node) {
+        flushOpenBlocks(state)
+        state.nodes.push(table.node)
+        return table.nextIndex
+      }
+      flushList(state)
+      state.paragraphLines.push(token.line)
+      return index + 1
+    }
+    case 'thematic-break':
+      flushOpenBlocks(state)
+      state.nodes.push({
+        type: 'thematic-break',
+      })
+      return index + 1
+    case 'unordered-list-item-line':
+      if (!addNestedUnorderedListItem(state, token)) {
+        beginTopLevelUnorderedListItem(state, token)
+      }
+      return index + 1
+  }
+}
+
 export const parseBlockTokens = (tokens: readonly BlockToken[]): readonly MessageIntermediateNode[] => {
   if (tokens.length === 0) {
     return getEmptyTextNode()
@@ -346,84 +418,7 @@ export const parseBlockTokens = (tokens: readonly BlockToken[]): readonly Messag
   const state = createInitialState()
 
   for (let index = 0; index < tokens.length; ) {
-    const token = tokens[index]
-
-    switch (token.type) {
-      case 'blank-line':
-        flushParagraph(state)
-        state.canContinueOrderedListItemParagraph = false
-        index++
-        break
-      case 'code-block':
-        flushOpenBlocks(state)
-        pushCodeBlock(state, token)
-        index++
-        break
-      case 'math-block':
-        flushOpenBlocks(state)
-        state.nodes.push({
-          text: token.text,
-          type: 'math-block',
-        })
-        index++
-        break
-      case 'thematic-break':
-        flushOpenBlocks(state)
-        state.nodes.push({
-          type: 'thematic-break',
-        })
-        index++
-        break
-      case 'blockquote-line': {
-        flushOpenBlocks(state)
-        const blockquote = consumeBlockquote(tokens, index)
-        state.nodes.push(blockquote.node)
-        index = blockquote.nextIndex
-        break
-      }
-      case 'table-row-line': {
-        const table = consumeTable(tokens, index, token)
-        if (table.node) {
-          flushOpenBlocks(state)
-          state.nodes.push(table.node)
-          index = table.nextIndex
-          break
-        }
-        flushList(state)
-        state.paragraphLines.push(token.line)
-        index++
-        break
-      }
-      case 'ordered-list-item-line':
-        if (!addNestedOrderedListItem(state, token)) {
-          beginTopLevelOrderedListItem(state, token)
-        }
-        index++
-        break
-      case 'unordered-list-item-line':
-        if (!addNestedUnorderedListItem(state, token)) {
-          beginTopLevelUnorderedListItem(state, token)
-        }
-        index++
-        break
-      case 'heading-line':
-        flushOpenBlocks(state)
-        state.nodes.push({
-          children: parseInlineNodes(token.text),
-          level: token.level,
-          type: 'heading',
-        })
-        index++
-        break
-      case 'paragraph-line':
-        if (!appendOrderedListParagraph(state, token)) {
-          flushList(state)
-          state.paragraphLines.push(token.text)
-          state.canContinueOrderedListItemParagraph = false
-        }
-        index++
-        break
-    }
+    index = processBlockToken(state, tokens, index)
   }
 
   flushList(state)
