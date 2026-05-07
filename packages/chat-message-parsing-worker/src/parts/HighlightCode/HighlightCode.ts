@@ -10,6 +10,138 @@ interface TokenRule {
   readonly regex: RegExp
 }
 
+const createKeywordRegex = (keywords: readonly string[]): RegExp => {
+  return new RegExp(`\\b(?:${keywords.join('|')})\\b`)
+}
+
+const jsKeywords = [
+  'const',
+  'let',
+  'var',
+  'function',
+  'return',
+  'if',
+  'else',
+  'for',
+  'while',
+  'class',
+  'new',
+  'typeof',
+  'instanceof',
+  'import',
+  'export',
+  'from',
+  'default',
+  'async',
+  'await',
+  'try',
+  'catch',
+  'finally',
+  'throw',
+  'this',
+  'true',
+  'false',
+  'null',
+  'undefined',
+] as const
+
+const tsKeywords = [
+  'abstract',
+  'any',
+  'as',
+  'asserts',
+  'async',
+  'await',
+  'boolean',
+  'class',
+  'const',
+  'constructor',
+  'declare',
+  'default',
+  'enum',
+  'export',
+  'extends',
+  'false',
+  'finally',
+  'for',
+  'from',
+  'function',
+  'get',
+  'if',
+  'implements',
+  'import',
+  'in',
+  'infer',
+  'instanceof',
+  'interface',
+  'is',
+  'keyof',
+  'let',
+  'module',
+  'namespace',
+  'never',
+  'new',
+  'null',
+  'number',
+  'object',
+  'override',
+  'private',
+  'protected',
+  'public',
+  'readonly',
+  'return',
+  'satisfies',
+  'set',
+  'static',
+  'string',
+  'super',
+  'switch',
+  'symbol',
+  'this',
+  'throw',
+  'true',
+  'try',
+  'type',
+  'typeof',
+  'undefined',
+  'unknown',
+  'var',
+  'void',
+  'while',
+] as const
+
+const pythonKeywords = [
+  'def',
+  'class',
+  'return',
+  'if',
+  'elif',
+  'else',
+  'for',
+  'while',
+  'in',
+  'import',
+  'from',
+  'as',
+  'with',
+  'try',
+  'except',
+  'finally',
+  'raise',
+  'lambda',
+  'yield',
+  'pass',
+  'break',
+  'continue',
+  'True',
+  'False',
+  'None',
+  'and',
+  'or',
+  'not',
+  'is',
+] as const
+
 const jsRules: readonly TokenRule[] = [
   { className: ClassNames.TokenComment, regex: /\/\/[^\n]*/ },
   { className: ClassNames.TokenComment, regex: /\/\*[\s\S]*?\*\// },
@@ -19,8 +151,7 @@ const jsRules: readonly TokenRule[] = [
   { className: ClassNames.TokenNumber, regex: /\b\d+\.?\d*\b/ },
   {
     className: ClassNames.TokenKeyword,
-    regex:
-      /\b(?:const|let|var|function|return|if|else|for|while|class|new|typeof|instanceof|import|export|from|default|async|await|try|catch|finally|throw|this|true|false|null|undefined)\b/,
+    regex: createKeywordRegex(jsKeywords),
   },
 ]
 
@@ -33,8 +164,7 @@ const tsRules: readonly TokenRule[] = [
   { className: ClassNames.TokenNumber, regex: /\b\d+\.?\d*\b/ },
   {
     className: ClassNames.TokenKeyword,
-    regex:
-      /\b(?:abstract|any|as|asserts|async|await|boolean|class|const|constructor|declare|default|enum|export|extends|false|finally|for|from|function|get|if|implements|import|in|infer|instanceof|interface|is|keyof|let|module|namespace|never|new|null|number|object|override|private|protected|public|readonly|return|satisfies|set|static|string|super|switch|symbol|this|throw|true|try|type|typeof|undefined|unknown|var|void|while)\b/,
+    regex: createKeywordRegex(tsKeywords),
   },
 ]
 
@@ -64,8 +194,7 @@ const pythonRules: readonly TokenRule[] = [
   { className: ClassNames.TokenNumber, regex: /\b\d+\.?\d*\b/ },
   {
     className: ClassNames.TokenKeyword,
-    regex:
-      /\b(?:def|class|return|if|elif|else|for|while|in|import|from|as|with|try|except|finally|raise|lambda|yield|pass|break|continue|True|False|None|and|or|not|is)\b/,
+    regex: createKeywordRegex(pythonKeywords),
   },
 ]
 

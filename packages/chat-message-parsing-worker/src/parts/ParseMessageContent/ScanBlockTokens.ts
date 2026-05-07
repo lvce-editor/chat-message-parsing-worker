@@ -10,6 +10,8 @@ export type BlockToken =
   | BlockTableRowLineToken
   | BlockUnorderedListItemLineToken
 
+type HeadingLevel = 1 | 2 | 3 | 4 | 5 | 6
+
 interface BlockBlankToken {
   readonly type: 'blank-line'
 }
@@ -25,7 +27,7 @@ interface BlockBlockQuoteLineToken {
 }
 
 interface BlockHeadingLineToken {
-  readonly level: 1 | 2 | 3 | 4 | 5 | 6
+  readonly level: HeadingLevel
   readonly text: string
   readonly type: 'heading-line'
 }
@@ -64,8 +66,13 @@ interface BlockThematicBreakToken {
 }
 
 interface ParsedHeadingLine {
-  readonly level: 1 | 2 | 3 | 4 | 5 | 6
+  readonly level: HeadingLevel
   readonly text: string
+}
+
+interface ScanResult {
+  readonly nextIndex: number
+  readonly token: BlockToken
 }
 
 interface ParsedOrderedListItemLine {
@@ -130,129 +137,150 @@ const parseOrderedListItemLine = (line: string): ParsedOrderedListItemLine | und
   while (indentation < line.length && line[indentation] === ' ') {
     indentation++
   }
-  let index = indentation
+      level: index as HeadingLevel,
   const firstDigit = index
   while (index < line.length && line[index] >= '0' && line[index] <= '9') {
     index++
+
+  const scanCodeBlock = (lines: readonly string[], start: number, trimmed: string): ScanResult | undefined => {
+    if (!trimmed.startsWith('```')) {
+      return undefined
+    }
+    const language = trimmed.slice(3).trim()
+    const codeLines: string[] = []
+    let index = start + 1
+    while (index < lines.length && !lines[index].trim().startsWith('```')) {
+      codeLines.push(lines[index])
+      index++
+    }
+    return {
+      nextIndex: Math.min(index + 1, lines.length),
+      token: language
+        ? {
+            language,
+            text: codeLines.join('\n'),
+            type: 'code-block',
+          }
+        : {
+            text: codeLines.join('\n'),
+            type: 'code-block',
+          },
+    }
+  }
+
+  const scanMathBlock = (lines: readonly string[], start: number, trimmed: string): ScanResult | undefined => {
+    if (trimmed !== markdownMathBlockDelimiter) {
+      return undefined
+    }
+    let endIndex = start + 1
+    while (endIndex < lines.length && lines[endIndex].trim() !== markdownMathBlockDelimiter) {
+      endIndex++
+    }
+    if (endIndex >= lines.length) {
+      return undefined
+    }
+    return {
+      nextIndex: endIndex + 1,
+      token: {
+        text: lines
+          .slice(start + 1, endIndex)
+          .join('\n')
+          .trim(),
+        type: 'math-block',
+      },
+    }
+  }
+
+  const getSingleLineToken = (line: string): BlockToken => {
+    const blockQuoteLine = parseBlockQuoteLine(line)
+    if (blockQuoteLine !== undefined) {
+      return {
+        text: blockQuoteLine,
+        type: 'blockquote-line',
+      }
+    }
+
+    const heading = parseHeadingLine(line)
+    if (heading) {
+      return {
+        level: heading.level,
+        text: heading.text,
+        type: 'heading-line',
+      }
+    }
+
+    if (isThematicBreakLine(line)) {
+      return {
+        type: 'thematic-break',
+      }
+    }
+
+    const ordered = parseOrderedListItemLine(line)
+    if (ordered) {
+      return {
+        indentation: ordered.indentation,
+        text: ordered.text,
+        type: 'ordered-list-item-line',
+      }
+    }
+
+    const unordered = parseUnorderedListItemLine(line)
+    if (unordered) {
+      return {
+        indentation: unordered.indentation,
+        text: unordered.text,
+        type: 'unordered-list-item-line',
+      }
+    }
+
+    if (isTableRow(line)) {
+      return {
+        cells: getTableCells(line),
+        line,
+        type: 'table-row-line',
+      }
+    }
+
+    return {
+      text: line,
+      type: 'paragraph-line',
+    }
+  }
   }
   if (index === firstDigit || line[index] !== '.') {
     return undefined
   }
   index++
   if (line[index] !== ' ') {
-    return undefined
-  }
+    let index = 0
+    while (index < lines.length) {
+      const line = lines[index]
   while (index < line.length && line[index] === ' ') {
     index++
   }
   return {
     indentation,
     text: line.slice(index),
+        index++
   }
 }
 
-const parseUnorderedListItemLine = (line: string): ParsedUnorderedListItemLine | undefined => {
-  let indentation = 0
-  while (indentation < line.length && line[indentation] === ' ') {
-    indentation++
-  }
-  const marker = line[indentation]
+      const codeBlock = scanCodeBlock(lines, index, trimmed)
+      if (codeBlock) {
+        tokens.push(codeBlock.token)
+        index = codeBlock.nextIndex
   if (marker !== '-' && marker !== '*') {
     return undefined
   }
-  let index = indentation + 1
-  if (line[index] !== ' ') {
-    return undefined
-  }
-  while (index < line.length && line[index] === ' ') {
-    index++
-  }
-  return {
-    indentation,
-    text: line.slice(index),
-  }
-}
-
-const parseBlockQuoteLine = (line: string): string | undefined => {
-  const trimmedStart = line.trimStart()
-  if (!trimmedStart.startsWith('>')) {
-    return undefined
-  }
-  const content = trimmedStart.slice(1)
-  if (!content) {
+      const mathBlock = scanMathBlock(lines, index, trimmed)
+      if (mathBlock) {
+        tokens.push(mathBlock.token)
+        index = mathBlock.nextIndex
     return ''
   }
   if (content.startsWith(' ')) {
-    return content.slice(1)
-  }
-  return content
-}
-
-const isThematicBreakLine = (line: string): boolean => {
-  const trimmedStart = line.trimStart()
-  const leadingSpaces = line.length - trimmedStart.length
-  if (leadingSpaces > 3) {
-    return false
-  }
-  const trimmed = trimmedStart.trimEnd()
-  if (!trimmed) {
-    return false
-  }
-  const marker = trimmed[0]
-  if (marker !== '-' && marker !== '_' && marker !== '*') {
-    return false
-  }
-  let markerCount = 0
-  for (let i = 0; i < trimmed.length; i++) {
-    const char = trimmed[i]
-    if (char === marker) {
-      markerCount++
-      continue
-    }
-    if (char !== ' ') {
-      return false
-    }
-  }
-  return markerCount >= 3
-}
-
-const isTableRow = (line: string): boolean => {
-  const trimmed = line.trim()
-  if (!trimmed.startsWith('|') || !trimmed.endsWith('|')) {
-    return false
-  }
-  return trimmed.length > 2
-}
-
-const getTableCells = (line: string): readonly string[] => {
-  const trimmed = line.trim()
-  return trimmed
-    .slice(1, -1)
-    .split('|')
-    .map((part) => part.trim())
-}
-
-export const scanBlockTokens = (rawMessage: string): readonly BlockToken[] => {
-  const normalizedMessage = normalizeInlineTables(normalizeEscapedNewlines(rawMessage))
-  const lines = normalizedMessage.split(lineBreakRegex)
-  const tokens: BlockToken[] = []
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]
-    const trimmed = line.trim()
-
-    if (!trimmed) {
-      tokens.push({
-        type: 'blank-line',
-      })
-      continue
-    }
-
-    const blockQuoteLine = parseBlockQuoteLine(line)
-    if (blockQuoteLine !== undefined) {
-      tokens.push({
-        text: blockQuoteLine,
-        type: 'blockquote-line',
+      tokens.push(getSingleLineToken(line))
+      index++
       })
       continue
     }

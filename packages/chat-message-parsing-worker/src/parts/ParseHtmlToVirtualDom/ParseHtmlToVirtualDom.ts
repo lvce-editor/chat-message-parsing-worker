@@ -22,10 +22,10 @@ type ReadonlyHtmlElementNode = {
 }
 
 type ReadonlyHtmlNode = ReadonlyHtmlElementNode | HtmlTextNode
+type AttributeRecord = Record<string, string>
 
 const maxHtmlLength = 40_000
 const tokenRegex = /<!--[\s\S]*?-->|<\/?[a-zA-Z][\w:-]*(?:\s[^<>]*?)?>|[^<]+/g
-const attributeRegex = /([^\s=/>]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g
 const scriptTagRegex = /<script\b[\s\S]*?<\/script>/gi
 const styleTagRegex = /<style\b[\s\S]*?<\/style>/gi
 const headTagRegex = /<head\b[\s\S]*?<\/head>/gi
@@ -34,6 +34,58 @@ const linkTagRegex = /<link\b[^>]*>/gi
 const tagPrefixRegex = /^<\/?\s*[a-zA-Z][\w:-]*/
 const tagSuffixRegex = /\/?\s*>$/
 const openTagNameRegex = /^<\s*([a-zA-Z][\w:-]*)/
+
+const elementTypes: Record<string, number> = {
+  a: VirtualDomElements.A,
+  abbr: VirtualDomElements.Abbr,
+  article: VirtualDomElements.Article,
+  aside: VirtualDomElements.Aside,
+  audio: VirtualDomElements.Audio,
+  br: VirtualDomElements.Br,
+  button: VirtualDomElements.Button,
+  code: VirtualDomElements.Code,
+  col: VirtualDomElements.Col,
+  colgroup: VirtualDomElements.ColGroup,
+  dd: VirtualDomElements.Dd,
+  dl: VirtualDomElements.Dl,
+  dt: VirtualDomElements.Dt,
+  em: VirtualDomElements.Em,
+  figcaption: VirtualDomElements.Figcaption,
+  figure: VirtualDomElements.Figure,
+  footer: VirtualDomElements.Footer,
+  h1: VirtualDomElements.H1,
+  h2: VirtualDomElements.H2,
+  h3: VirtualDomElements.H3,
+  h4: VirtualDomElements.H4,
+  h5: VirtualDomElements.H5,
+  h6: VirtualDomElements.H6,
+  header: VirtualDomElements.Header,
+  hr: VirtualDomElements.Hr,
+  i: VirtualDomElements.I,
+  img: VirtualDomElements.Img,
+  input: VirtualDomElements.Input,
+  label: VirtualDomElements.Label,
+  li: VirtualDomElements.Li,
+  main: VirtualDomElements.Main,
+  nav: VirtualDomElements.Nav,
+  ol: VirtualDomElements.Ol,
+  option: VirtualDomElements.Option,
+  p: VirtualDomElements.P,
+  pre: VirtualDomElements.Pre,
+  section: VirtualDomElements.Section,
+  select: VirtualDomElements.Select,
+  span: VirtualDomElements.Span,
+  strong: VirtualDomElements.Strong,
+  table: VirtualDomElements.Table,
+  tbody: VirtualDomElements.TBody,
+  td: VirtualDomElements.Td,
+  textarea: VirtualDomElements.TextArea,
+  tfoot: VirtualDomElements.Tfoot,
+  th: VirtualDomElements.Th,
+  thead: VirtualDomElements.THead,
+  tr: VirtualDomElements.Tr,
+  ul: VirtualDomElements.Ul,
+}
 
 const inlineTags = new Set(['a', 'abbr', 'b', 'code', 'em', 'i', 'label', 'small', 'span', 'strong', 'sub', 'sup', 'u'])
 
@@ -59,36 +111,184 @@ const decodeEntities = (value: string): string => {
     .replaceAll('&amp;', '&')
 }
 
+const createAttributeRecord = (): AttributeRecord => {
+  return Object.create(null) as AttributeRecord
+}
+
+const isWhitespace = (value: string | undefined): boolean => {
+  return value === ' ' || value === '\n' || value === '\r' || value === '\t'
+}
+
+const skipWhitespace = (value: string, start: number): number => {
+  let index = start
+  while (index < value.length && isWhitespace(value[index])) {
+    index++
+  }
+  return index
+}
+
+const readAttributeName = (value: string, start: number): { readonly name: string; readonly nextIndex: number } => {
+  let index = start
+  while (index < value.length) {
+    const current = value[index]
+    if (isWhitespace(current) || current === '=' || current === '/' || current === '>') {
+      break
+    }
+    index++
+  }
+  return {
+    name: value.slice(start, index),
+    nextIndex: index,
+  }
+}
+
+const readQuotedAttributeValue = (value: string, start: number): { readonly value: string; readonly nextIndex: number } => {
+  const quote = value[start]
+  let index = start + 1
+  while (index < value.length && value[index] !== quote) {
+    index++
+  }
+  return {
+    nextIndex: index < value.length ? index + 1 : index,
+    value: value.slice(start + 1, index),
+  }
+}
+
+const readUnquotedAttributeValue = (value: string, start: number): { readonly value: string; readonly nextIndex: number } => {
+  let index = start
+  while (index < value.length) {
+    const current = value[index]
+    if (isWhitespace(current) || current === '"' || current === "'" || current === '=' || current === '<' || current === '>' || current === '`') {
+      break
+    }
+    index++
+  }
+  return {
+    nextIndex: index,
+    value: value.slice(start, index),
+  }
+}
+
+const readAttributeValue = (value: string, start: number): { readonly value: string; readonly nextIndex: number } => {
+  if (value[start] === '"' || value[start] === "'") {
+    return readQuotedAttributeValue(value, start)
+  }
+  return readUnquotedAttributeValue(value, start)
+}
+
 const parseAttributes = (token: string): Record<string, string> => {
   const withoutTag = token.replace(tagPrefixRegex, '').replace(tagSuffixRegex, '').trim()
 
   if (!withoutTag) {
-    return Object.create(null) as Record<string, string>
+    return createAttributeRecord()
   }
 
-  const attributes: Record<string, string> = Object.create(null) as Record<string, string>
-  const matches = withoutTag.matchAll(attributeRegex)
+  const attributes = createAttributeRecord()
+  let index = 0
 
-  for (const match of matches) {
-    const name = String(match[1] || '').toLowerCase()
-    if (!name || name.startsWith('on')) {
+  while (index < withoutTag.length) {
+    index = skipWhitespace(withoutTag, index)
+    if (index >= withoutTag.length) {
+      break
+    }
+    const nameResult = readAttributeName(withoutTag, index)
+    if (!nameResult.name) {
+      index++
       continue
     }
-    const value = String(match[2] ?? match[3] ?? match[4] ?? '')
-    attributes[name] = decodeEntities(value)
+    const name = nameResult.name.toLowerCase()
+    index = skipWhitespace(withoutTag, nameResult.nextIndex)
+    let attributeValue = ''
+    if (withoutTag[index] === '=') {
+      index = skipWhitespace(withoutTag, index + 1)
+      const valueResult = readAttributeValue(withoutTag, index)
+      attributeValue = valueResult.value
+      index = valueResult.nextIndex
+    }
+    if (!name.startsWith('on')) {
+      attributes[name] = decodeEntities(attributeValue)
+    }
   }
 
   return attributes
 }
 
-const parseHtml = (value: string): readonly HtmlNode[] => {
-  const root: HtmlElementNode = {
-    attributes: Object.create(null) as Record<string, string>,
+const createRootNode = (): HtmlElementNode => {
+  return {
+    attributes: createAttributeRecord(),
     children: [],
     tagName: 'root',
     type: 'element',
   }
+}
 
+const popClosedElements = (stack: HtmlElementNode[], closingTagName: string): void => {
+  while (stack.length > 1) {
+    const top = stack.at(-1)
+    if (!top) {
+      return
+    }
+    stack.pop()
+    if (top.tagName === closingTagName) {
+      return
+    }
+  }
+}
+
+const appendOpenTagNode = (stack: HtmlElementNode[], token: string): void => {
+  const openTagNameMatch = openTagNameRegex.exec(token)
+  if (!openTagNameMatch) {
+    return
+  }
+  const tagName = openTagNameMatch[1].toLowerCase()
+  const parent = stack.at(-1)
+  if (!parent) {
+    return
+  }
+  const elementNode: HtmlElementNode = {
+    attributes: parseAttributes(token),
+    children: [],
+    tagName,
+    type: 'element',
+  }
+  parent.children.push(elementNode)
+  if (!token.endsWith('/>') && !voidElements.has(tagName)) {
+    stack.push(elementNode)
+  }
+}
+
+const appendTextNode = (stack: HtmlElementNode[], token: string): void => {
+  const decoded = decodeEntities(token)
+  if (!decoded) {
+    return
+  }
+  const parent = stack.at(-1)
+  if (!parent) {
+    return
+  }
+  parent.children.push({
+    type: 'text',
+    value: decoded,
+  })
+}
+
+const handleHtmlToken = (stack: HtmlElementNode[], token: string): void => {
+  if (token.startsWith('<!--')) {
+    return
+  }
+  if (token.startsWith('</')) {
+    popClosedElements(stack, token.slice(2, -1).trim().toLowerCase())
+    return
+  }
+  if (token.startsWith('<')) {
+    appendOpenTagNode(stack, token)
+    return
+  }
+  appendTextNode(stack, token)
+}
+
+const parseHtml = (value: string): readonly HtmlNode[] => {
+  const root = createRootNode()
   const stack: HtmlElementNode[] = [root]
 
   const matches = sanitizeHtml(value).match(tokenRegex)
@@ -97,171 +297,14 @@ const parseHtml = (value: string): readonly HtmlNode[] => {
   }
 
   for (const token of matches) {
-    if (token.startsWith('<!--')) {
-      continue
-    }
-
-    if (token.startsWith('</')) {
-      const closingTagName = token.slice(2, -1).trim().toLowerCase()
-      while (stack.length > 1) {
-        const top = stack.at(-1)
-        if (!top) {
-          break
-        }
-        stack.pop()
-        if (top.tagName === closingTagName) {
-          break
-        }
-      }
-      continue
-    }
-
-    if (token.startsWith('<')) {
-      const openTagNameMatch = openTagNameRegex.exec(token)
-      if (!openTagNameMatch) {
-        continue
-      }
-      const tagName = openTagNameMatch[1].toLowerCase()
-      const elementNode: HtmlElementNode = {
-        attributes: parseAttributes(token),
-        children: [],
-        tagName,
-        type: 'element',
-      }
-
-      const parent = stack.at(-1)
-      if (!parent) {
-        continue
-      }
-      parent.children.push(elementNode)
-
-      const selfClosing = token.endsWith('/>') || voidElements.has(tagName)
-      if (!selfClosing) {
-        stack.push(elementNode)
-      }
-      continue
-    }
-
-    const decoded = decodeEntities(token)
-    if (!decoded) {
-      continue
-    }
-    const parent = stack.at(-1)
-    if (!parent) {
-      continue
-    }
-    parent.children.push({
-      type: 'text',
-      value: decoded,
-    })
+    handleHtmlToken(stack, token)
   }
 
   return root.children
 }
 
 const getElementType = (tagName: string): number => {
-  switch (tagName) {
-    case 'a':
-      return VirtualDomElements.A
-    case 'abbr':
-      return VirtualDomElements.Abbr
-    case 'article':
-      return VirtualDomElements.Article
-    case 'aside':
-      return VirtualDomElements.Aside
-    case 'audio':
-      return VirtualDomElements.Audio
-    case 'br':
-      return VirtualDomElements.Br
-    case 'button':
-      return VirtualDomElements.Button
-    case 'code':
-      return VirtualDomElements.Code
-    case 'col':
-      return VirtualDomElements.Col
-    case 'colgroup':
-      return VirtualDomElements.ColGroup
-    case 'dd':
-      return VirtualDomElements.Dd
-    case 'dl':
-      return VirtualDomElements.Dl
-    case 'dt':
-      return VirtualDomElements.Dt
-    case 'em':
-      return VirtualDomElements.Em
-    case 'figcaption':
-      return VirtualDomElements.Figcaption
-    case 'figure':
-      return VirtualDomElements.Figure
-    case 'footer':
-      return VirtualDomElements.Footer
-    case 'h1':
-      return VirtualDomElements.H1
-    case 'h2':
-      return VirtualDomElements.H2
-    case 'h3':
-      return VirtualDomElements.H3
-    case 'h4':
-      return VirtualDomElements.H4
-    case 'h5':
-      return VirtualDomElements.H5
-    case 'h6':
-      return VirtualDomElements.H6
-    case 'header':
-      return VirtualDomElements.Header
-    case 'hr':
-      return VirtualDomElements.Hr
-    case 'i':
-      return VirtualDomElements.I
-    case 'img':
-      return VirtualDomElements.Img
-    case 'input':
-      return VirtualDomElements.Input
-    case 'label':
-      return VirtualDomElements.Label
-    case 'li':
-      return VirtualDomElements.Li
-    case 'main':
-      return VirtualDomElements.Main
-    case 'nav':
-      return VirtualDomElements.Nav
-    case 'ol':
-      return VirtualDomElements.Ol
-    case 'option':
-      return VirtualDomElements.Option
-    case 'p':
-      return VirtualDomElements.P
-    case 'pre':
-      return VirtualDomElements.Pre
-    case 'section':
-      return VirtualDomElements.Section
-    case 'select':
-      return VirtualDomElements.Select
-    case 'span':
-      return VirtualDomElements.Span
-    case 'strong':
-      return VirtualDomElements.Strong
-    case 'table':
-      return VirtualDomElements.Table
-    case 'tbody':
-      return VirtualDomElements.TBody
-    case 'td':
-      return VirtualDomElements.Td
-    case 'textarea':
-      return VirtualDomElements.TextArea
-    case 'tfoot':
-      return VirtualDomElements.Tfoot
-    case 'th':
-      return VirtualDomElements.Th
-    case 'thead':
-      return VirtualDomElements.THead
-    case 'tr':
-      return VirtualDomElements.Tr
-    case 'ul':
-      return VirtualDomElements.Ul
-    default:
-      return inlineTags.has(tagName) ? VirtualDomElements.Span : VirtualDomElements.Div
-  }
+  return elementTypes[tagName] ?? (inlineTags.has(tagName) ? VirtualDomElements.Span : VirtualDomElements.Div)
 }
 
 const isHttpUrl = (url: string): boolean => {

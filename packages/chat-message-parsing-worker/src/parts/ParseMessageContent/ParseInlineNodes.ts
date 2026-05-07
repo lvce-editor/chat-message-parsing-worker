@@ -124,6 +124,8 @@ const isCloseBracket = (value: string): boolean => {
   return value === ')' || value === ']' || value === '}'
 }
 
+const trailingRawUrlPunctuation = new Set(['.', ',', ':', ';', '!', '?'])
+
 const findRawUrlEnd = (value: string, start: number): number => {
   let index = start
   while (index < value.length) {
@@ -150,29 +152,32 @@ const trimRawUrlEnd = (url: string): string => {
   let end = url.length
   while (end > 0) {
     const current = url[end - 1]
-    if (current === '.' || current === ',' || current === ':' || current === ';' || current === '!' || current === '?') {
+    if (trailingRawUrlPunctuation.has(current)) {
       end--
       continue
     }
-    if (isCloseBracket(current)) {
-      const inner = url.slice(0, end - 1)
-      let openCount = 0
-      let closeCount = 0
-      for (let i = 0; i < inner.length; i++) {
-        if (isOpenBracket(inner[i])) {
-          openCount++
-        } else if (isCloseBracket(inner[i])) {
-          closeCount++
-        }
-      }
-      if (closeCount >= openCount) {
-        end--
-        continue
-      }
+    if (isCloseBracket(current) && hasBalancedOrExtraClosingBrackets(url.slice(0, end - 1))) {
+      end--
+      continue
     }
     break
   }
   return url.slice(0, end)
+}
+
+const hasBalancedOrExtraClosingBrackets = (value: string): boolean => {
+  let openCount = 0
+  let closeCount = 0
+  for (const current of value) {
+    if (isOpenBracket(current)) {
+      openCount++
+      continue
+    }
+    if (isCloseBracket(current)) {
+      closeCount++
+    }
+  }
+  return closeCount >= openCount
 }
 
 const parseRawLinkToken = (value: string, start: number): ParsedInlineToken | undefined => {
@@ -198,90 +203,86 @@ const parseRawLinkToken = (value: string, start: number): ParsedInlineToken | un
   }
 }
 
-const parseLinkToken = (value: string, start: number): ParsedInlineToken | undefined => {
-  if (value[start] !== '[') {
-    return undefined
-  }
-  const textEnd = value.indexOf(']', start + 1)
-  if (textEnd === -1) {
-    return undefined
-  }
-  if (value[textEnd + 1] !== '(') {
-    return undefined
-  }
+const findMarkdownTargetEnd = (value: string, start: number): number => {
   let depth = 1
-  let index = textEnd + 2
+  let index = start
   while (index < value.length) {
     const current = value[index]
     if (current === '\n') {
-      return undefined
+      return -1
     }
     if (current === '(') {
       depth++
     } else if (current === ')') {
       depth--
       if (depth === 0) {
-        const text = value.slice(start + 1, textEnd)
-        const href = value.slice(textEnd + 2, index)
-        if (!text || !href) {
-          return undefined
-        }
-        return {
-          length: index - start + 1,
-          node: {
-            href: sanitizeLinkUrl(href, text),
-            text,
-            type: 'link',
-          },
-        }
+        return index
       }
     }
     index++
   }
-  return undefined
+  return -1
+}
+
+const parseBracketedTargetToken = (
+  value: string,
+  start: number,
+  offset: number,
+): { readonly label: string; readonly length: number; readonly target: string } | undefined => {
+  const textEnd = value.indexOf(']', start + offset)
+  if (textEnd === -1 || value[textEnd + 1] !== '(') {
+    return undefined
+  }
+  const targetEnd = findMarkdownTargetEnd(value, textEnd + 2)
+  if (targetEnd === -1) {
+    return undefined
+  }
+  const label = value.slice(start + offset, textEnd)
+  const target = value.slice(textEnd + 2, targetEnd)
+  if (!target) {
+    return undefined
+  }
+  return {
+    label,
+    length: targetEnd - start + 1,
+    target,
+  }
+}
+
+const parseLinkToken = (value: string, start: number): ParsedInlineToken | undefined => {
+  if (value[start] !== '[') {
+    return undefined
+  }
+  const parsed = parseBracketedTargetToken(value, start, 1)
+  if (!parsed || !parsed.label) {
+    return undefined
+  }
+  return {
+    length: parsed.length,
+    node: {
+      href: sanitizeLinkUrl(parsed.target, parsed.label),
+      text: parsed.label,
+      type: 'link',
+    },
+  }
 }
 
 const parseImageToken = (value: string, start: number): ParsedInlineToken | undefined => {
   if (value[start] !== '!' || value[start + 1] !== '[') {
     return undefined
   }
-  const textEnd = value.indexOf(']', start + 2)
-  if (textEnd === -1) {
+  const parsed = parseBracketedTargetToken(value, start, 2)
+  if (!parsed) {
     return undefined
   }
-  if (value[textEnd + 1] !== '(') {
-    return undefined
+  return {
+    length: parsed.length,
+    node: {
+      alt: parsed.label,
+      src: sanitizeImageUrl(parsed.target),
+      type: 'image',
+    },
   }
-  let depth = 1
-  let index = textEnd + 2
-  while (index < value.length) {
-    const current = value[index]
-    if (current === '\n') {
-      return undefined
-    }
-    if (current === '(') {
-      depth++
-    } else if (current === ')') {
-      depth--
-      if (depth === 0) {
-        const alt = value.slice(start + 2, textEnd)
-        const src = value.slice(textEnd + 2, index)
-        if (!src) {
-          return undefined
-        }
-        return {
-          length: index - start + 1,
-          node: {
-            alt,
-            src: sanitizeImageUrl(src),
-            type: 'image',
-          },
-        }
-      }
-    }
-    index++
-  }
-  return undefined
 }
 
 const parseBoldToken = (value: string, start: number): ParsedInlineToken | undefined => {
@@ -418,38 +419,48 @@ const parseMathToken = (value: string, start: number): ParsedInlineToken | undef
     return undefined
   }
   const delimiterLength = value[start + 1] === '$' ? 2 : 1
+  if (hasInvalidMathOpening(value, start, delimiterLength)) {
+    return undefined
+  }
+  const closingIndex = findMathClosingIndex(value, start + delimiterLength, delimiterLength)
+  if (closingIndex === -1) {
+    return undefined
+  }
+  const body = value.slice(start + delimiterLength, closingIndex)
+  const following = value[closingIndex + delimiterLength]
+  if (!body || isAlphaNumeric(following)) {
+    return undefined
+  }
+  return {
+    length: closingIndex - start + delimiterLength,
+    node: {
+      displayMode: delimiterLength === 2,
+      text: body.trim(),
+      type: 'math-inline',
+    },
+  }
+}
+
+const hasInvalidMathOpening = (value: string, start: number, delimiterLength: number): boolean => {
   const previous = value[start - 1]
   if (isAlphaNumeric(previous)) {
-    return undefined
+    return true
   }
   const next = value[start + delimiterLength]
   if (!next || next === '.') {
-    return undefined
+    return true
   }
-  if (next === '(' && (value[start + delimiterLength + 1] === '"' || value[start + delimiterLength + 1] === "'")) {
-    return undefined
-  }
+  return next === '(' && (value[start + delimiterLength + 1] === '"' || value[start + delimiterLength + 1] === "'")
+}
 
-  let index = start + delimiterLength
+const findMathClosingIndex = (value: string, start: number, delimiterLength: number): number => {
+  let index = start
   while (index < value.length) {
     if (value[index] === '\n') {
-      return undefined
+      return -1
     }
-    const isClosed = delimiterLength === 2 ? value.startsWith('$$', index) : value[index] === '$'
-    if (isClosed) {
-      const body = value.slice(start + delimiterLength, index)
-      const following = value[index + delimiterLength]
-      if (!body || isAlphaNumeric(following)) {
-        return undefined
-      }
-      return {
-        length: index - start + delimiterLength,
-        node: {
-          displayMode: delimiterLength === 2,
-          text: body.trim(),
-          type: 'math-inline',
-        },
-      }
+    if (delimiterLength === 2 ? value.startsWith('$$', index) : value[index] === '$') {
+      return index
     }
     if (value[index] === '\\') {
       index += 2
@@ -457,7 +468,7 @@ const parseMathToken = (value: string, start: number): ParsedInlineToken | undef
     }
     index++
   }
-  return undefined
+  return -1
 }
 
 const parseInlineToken = (value: string, start: number): ParsedInlineToken | undefined => {
@@ -465,10 +476,6 @@ const parseInlineToken = (value: string, start: number): ParsedInlineToken | und
     parseImageToken(value, start) ||
     parseLinkToken(value, start) ||
     parseRawLinkToken(value, start) ||
-    parseBoldItalicToken(value, start) ||
-    parseBoldToken(value, start) ||
-    parseItalicToken(value, start) ||
-    parseLinkToken(value, start) ||
     parseBoldItalicToken(value, start) ||
     parseBoldToken(value, start) ||
     parseItalicToken(value, start) ||

@@ -69,297 +69,365 @@ const getEmptyTextNode = (): readonly MessageIntermediateNode[] => {
   ]
 }
 
+type ListType = 'ordered-list' | 'unordered-list' | ''
+
+interface OrderedListPathEntry {
+  readonly indentation: number
+  readonly path: readonly number[]
+}
+
+interface ParseState {
+  canContinueOrderedListItemParagraph: boolean
+  listItems: MessageListItemNode[]
+  listType: ListType
+  nodes: MessageIntermediateNode[]
+  orderedListPathStack: readonly OrderedListPathEntry[]
+  paragraphLines: string[]
+}
+
+const createInitialState = (): ParseState => {
+  return {
+    canContinueOrderedListItemParagraph: false,
+    listItems: [],
+    listType: '',
+    nodes: [],
+    orderedListPathStack: [],
+    paragraphLines: [],
+  }
+}
+
+const createListItem = (text: string, index?: number): MessageListItemNode => {
+  return {
+    children: parseInlineNodes(text),
+    ...(index === undefined ? {} : { index }),
+    type: 'list-item',
+  }
+}
+
+const getListItemAtPath = (items: readonly MessageListItemNode[], path: readonly number[]): MessageListItemNode | undefined => {
+  let currentItems = items
+  let currentItem: MessageListItemNode | undefined
+  for (const index of path) {
+    currentItem = currentItems[index]
+    if (!currentItem) {
+      return undefined
+    }
+    currentItems = currentItem.nestedItems || []
+  }
+  return currentItem
+}
+
+const appendNestedItemAtPath = (
+  items: readonly MessageListItemNode[],
+  path: readonly number[],
+  item: MessageListItemNode,
+  nestedListType: 'ordered-list' | 'unordered-list',
+): MessageListItemNode[] => {
+  if (path.length === 0) {
+    return [...items, item]
+  }
+  const [index, ...rest] = path
+  const current = items[index]
+  if (!current) {
+    return [...items]
+  }
+  const nextNestedItems =
+    rest.length > 0 ? appendNestedItemAtPath(current.nestedItems || [], rest, item, nestedListType) : [...(current.nestedItems || []), item]
+  const nextItem = {
+    ...current,
+    nestedItems: nextNestedItems,
+    nestedListType,
+  }
+  return [...items.slice(0, index), nextItem, ...items.slice(index + 1)]
+}
+
+const appendInlineChildrenAtPath = (
+  items: readonly MessageListItemNode[],
+  path: readonly number[],
+  children: MessageListItemNode['children'],
+): MessageListItemNode[] => {
+  if (path.length === 0) {
+    return [...items]
+  }
+  const [index, ...rest] = path
+  const current = items[index]
+  if (!current) {
+    return [...items]
+  }
+  const lineBreakNode: MessageInlineNode = {
+    text: '\n',
+    type: 'text',
+  }
+  const nextChildren: MessageInlineNode[] = [...current.children, lineBreakNode, ...children]
+  const nextItem =
+    rest.length > 0
+      ? {
+          ...current,
+          nestedItems: appendInlineChildrenAtPath(current.nestedItems || [], rest, children),
+        }
+      : {
+          ...current,
+          children: nextChildren,
+        }
+  return [...items.slice(0, index), nextItem, ...items.slice(index + 1)]
+}
+
+const flushParagraph = (state: ParseState): void => {
+  if (state.paragraphLines.length === 0) {
+    return
+  }
+  state.nodes.push({
+    children: parseInlineNodes(state.paragraphLines.join('\n')),
+    type: 'text',
+  })
+  state.paragraphLines = []
+}
+
+const flushList = (state: ParseState): void => {
+  if (state.listItems.length === 0) {
+    return
+  }
+  state.nodes.push({
+    items: state.listItems,
+    type: state.listType || 'ordered-list',
+  })
+  state.listItems = []
+  state.listType = ''
+  state.orderedListPathStack = []
+  state.canContinueOrderedListItemParagraph = false
+}
+
+const flushOpenBlocks = (state: ParseState): void => {
+  flushList(state)
+  flushParagraph(state)
+}
+
+const findOrderedListParentEntry = (state: ParseState, indentation: number): OrderedListPathEntry | undefined => {
+  if (state.listType !== 'ordered-list' || state.listItems.length === 0 || indentation <= 0 || state.orderedListPathStack.length === 0) {
+    return undefined
+  }
+  return state.orderedListPathStack.toReversed().find((entry) => entry.indentation < indentation)
+}
+
+const addNestedOrderedListItem = (state: ParseState, token: Extract<BlockToken, { type: 'ordered-list-item-line' }>): boolean => {
+  const parentEntry = findOrderedListParentEntry(state, token.indentation)
+  if (!parentEntry) {
+    return false
+  }
+  const parentItem = getListItemAtPath(state.listItems, parentEntry.path)
+  if (!parentItem) {
+    return false
+  }
+  const nextIndex = parentItem.nestedItems?.length || 0
+  const nextItem = createListItem(token.text, nextIndex + 1)
+  state.listItems = appendNestedItemAtPath(state.listItems, parentEntry.path, nextItem, 'ordered-list')
+  state.orderedListPathStack = [
+    ...state.orderedListPathStack.filter((entry) => entry.indentation < token.indentation),
+    { indentation: token.indentation, path: [...parentEntry.path, nextIndex] },
+  ]
+  state.canContinueOrderedListItemParagraph = true
+  return true
+}
+
+const addNestedUnorderedListItem = (state: ParseState, token: Extract<BlockToken, { type: 'unordered-list-item-line' }>): boolean => {
+  const parentEntry = findOrderedListParentEntry(state, token.indentation)
+  if (!parentEntry) {
+    return false
+  }
+  state.listItems = appendNestedItemAtPath(state.listItems, parentEntry.path, createListItem(token.text), 'unordered-list')
+  state.canContinueOrderedListItemParagraph = false
+  return true
+}
+
+const beginTopLevelOrderedListItem = (state: ParseState, token: Extract<BlockToken, { type: 'ordered-list-item-line' }>): void => {
+  if (state.listType && state.listType !== 'ordered-list') {
+    flushList(state)
+  }
+  flushParagraph(state)
+  state.listType = 'ordered-list'
+  const nextIndex = state.listItems.length
+  state.listItems.push(createListItem(token.text, nextIndex + 1))
+  state.orderedListPathStack = [
+    ...state.orderedListPathStack.filter((entry) => entry.indentation < token.indentation),
+    { indentation: token.indentation, path: [nextIndex] },
+  ]
+  state.canContinueOrderedListItemParagraph = true
+}
+
+const beginTopLevelUnorderedListItem = (state: ParseState, token: Extract<BlockToken, { type: 'unordered-list-item-line' }>): void => {
+  if (state.listType && state.listType !== 'unordered-list') {
+    flushList(state)
+  }
+  flushParagraph(state)
+  state.listType = 'unordered-list'
+  state.listItems.push(createListItem(token.text))
+  state.canContinueOrderedListItemParagraph = false
+}
+
+const consumeBlockquote = (tokens: readonly BlockToken[], start: number): { readonly nextIndex: number; readonly node: MessageIntermediateNode } => {
+  const lines: string[] = []
+  let index = start
+  while (index < tokens.length && tokens[index].type === 'blockquote-line') {
+    lines.push(tokens[index].text)
+    index++
+  }
+  return {
+    nextIndex: index,
+    node: {
+      children: parseBlockTokens(scanBlockTokens(lines.join('\n'))),
+      type: 'blockquote',
+    },
+  }
+}
+
+const consumeTable = (
+  tokens: readonly BlockToken[],
+  start: number,
+  token: Extract<BlockToken, { type: 'table-row-line' }>,
+): { readonly nextIndex: number; readonly node?: MessageIntermediateNode } => {
+  const expectedColumns = token.cells.length
+  if (!isTableSeparatorToken(tokens[start + 1], expectedColumns)) {
+    return {
+      nextIndex: start,
+    }
+  }
+  const rows: MessageTableRowNode[] = []
+  let index = start + 2
+  while (index < tokens.length && tokens[index].type === 'table-row-line') {
+    if (tokens[index].cells.length === expectedColumns) {
+      rows.push(toTableRow(tokens[index]))
+    }
+    index++
+  }
+  return {
+    nextIndex: index,
+    node: {
+      headers: token.cells.map(toTableCell),
+      rows,
+      type: 'table',
+    },
+  }
+}
+
+const pushCodeBlock = (state: ParseState, token: Extract<BlockToken, { type: 'code-block' }>): void => {
+  state.nodes.push(
+    token.language
+      ? {
+          codeTokens: highlightCode(token.text, token.language),
+          language: token.language,
+          text: token.text,
+          type: 'code-block',
+        }
+      : {
+          codeTokens: highlightCode(token.text, undefined),
+          text: token.text,
+          type: 'code-block',
+        },
+  )
+}
+
+const appendOrderedListParagraph = (state: ParseState, token: Extract<BlockToken, { type: 'paragraph-line' }>): boolean => {
+  if (state.listType !== 'ordered-list' || state.listItems.length === 0 || !state.canContinueOrderedListItemParagraph) {
+    return false
+  }
+  const currentPath = state.orderedListPathStack.at(-1)?.path
+  if (!currentPath) {
+    return false
+  }
+  state.listItems = appendInlineChildrenAtPath(state.listItems, currentPath, parseInlineNodes(token.text))
+  return true
+}
+
 export const parseBlockTokens = (tokens: readonly BlockToken[]): readonly MessageIntermediateNode[] => {
   if (tokens.length === 0) {
     return getEmptyTextNode()
   }
 
-  const nodes: MessageIntermediateNode[] = []
-  let paragraphLines: string[] = []
-  let listItems: MessageListItemNode[] = []
-  let listType: 'ordered-list' | 'unordered-list' | '' = ''
-  let orderedListPathStack: Array<{ readonly indentation: number; readonly path: readonly number[] }> = []
-  let canContinueOrderedListItemParagraph = false
+  const state = createInitialState()
 
-  const createListItem = (text: string, index?: number): MessageListItemNode => {
-    return {
-      children: parseInlineNodes(text),
-      ...(index === undefined ? {} : { index }),
-      type: 'list-item',
-    }
-  }
+  for (let index = 0; index < tokens.length; ) {
+    const token = tokens[index]
 
-  const getListItemAtPath = (items: readonly MessageListItemNode[], path: readonly number[]): MessageListItemNode | undefined => {
-    let currentItems = items
-    let currentItem: MessageListItemNode | undefined
-    for (const index of path) {
-      currentItem = currentItems[index]
-      if (!currentItem) {
-        return undefined
-      }
-      currentItems = currentItem.nestedItems || []
-    }
-    return currentItem
-  }
-
-  const appendNestedItemAtPath = (
-    items: readonly MessageListItemNode[],
-    path: readonly number[],
-    item: MessageListItemNode,
-    nestedListType: 'ordered-list' | 'unordered-list',
-  ): MessageListItemNode[] => {
-    if (path.length === 0) {
-      return [...items, item]
-    }
-    const [index, ...rest] = path
-    const current = items[index]
-    if (!current) {
-      return [...items]
-    }
-    const nextNestedItems =
-      rest.length > 0 ? appendNestedItemAtPath(current.nestedItems || [], rest, item, nestedListType) : [...(current.nestedItems || []), item]
-    const nextItem = {
-      ...current,
-      nestedItems: nextNestedItems,
-      nestedListType,
-    }
-    return [...items.slice(0, index), nextItem, ...items.slice(index + 1)]
-  }
-
-  const appendInlineChildrenAtPath = (
-    items: readonly MessageListItemNode[],
-    path: readonly number[],
-    children: MessageListItemNode['children'],
-  ): MessageListItemNode[] => {
-    if (path.length === 0) {
-      return [...items]
-    }
-    const [index, ...rest] = path
-    const current = items[index]
-    if (!current) {
-      return [...items]
-    }
-    const lineBreakNode: MessageInlineNode = {
-      text: '\n',
-      type: 'text',
-    }
-    const nextChildren: MessageInlineNode[] = [...current.children, lineBreakNode, ...children]
-    const nextItem =
-      rest.length > 0
-        ? {
-            ...current,
-            nestedItems: appendInlineChildrenAtPath(current.nestedItems || [], rest, children),
-          }
-        : {
-            ...current,
-            children: nextChildren,
-          }
-    return [...items.slice(0, index), nextItem, ...items.slice(index + 1)]
-  }
-
-  const flushParagraph = (): void => {
-    if (paragraphLines.length === 0) {
-      return
-    }
-    nodes.push({
-      children: parseInlineNodes(paragraphLines.join('\n')),
-      type: 'text',
-    })
-    paragraphLines = []
-  }
-
-  const flushList = (): void => {
-    if (listItems.length === 0) {
-      return
-    }
-    nodes.push({
-      items: listItems,
-      type: listType || 'ordered-list',
-    })
-    listItems = []
-    listType = ''
-    orderedListPathStack = []
-    canContinueOrderedListItemParagraph = false
-  }
-
-  for (let i = 0; i < tokens.length; i++) {
-    const token = tokens[i]
-
-    if (token.type === 'blank-line') {
-      flushParagraph()
-      canContinueOrderedListItemParagraph = false
-      continue
-    }
-
-    if (token.type === 'code-block') {
-      flushList()
-      flushParagraph()
-      if (token.language) {
-        nodes.push({
-          codeTokens: highlightCode(token.text, token.language),
-          language: token.language,
+    switch (token.type) {
+      case 'blank-line':
+        flushParagraph(state)
+        state.canContinueOrderedListItemParagraph = false
+        index++
+        break
+      case 'code-block':
+        flushOpenBlocks(state)
+        pushCodeBlock(state, token)
+        index++
+        break
+      case 'math-block':
+        flushOpenBlocks(state)
+        state.nodes.push({
           text: token.text,
-          type: 'code-block',
+          type: 'math-block',
         })
-      } else {
-        nodes.push({
-          codeTokens: highlightCode(token.text, undefined),
-          text: token.text,
-          type: 'code-block',
+        index++
+        break
+      case 'thematic-break':
+        flushOpenBlocks(state)
+        state.nodes.push({
+          type: 'thematic-break',
         })
+        index++
+        break
+      case 'blockquote-line': {
+        flushOpenBlocks(state)
+        const blockquote = consumeBlockquote(tokens, index)
+        state.nodes.push(blockquote.node)
+        index = blockquote.nextIndex
+        break
       }
-      continue
-    }
-
-    if (token.type === 'math-block') {
-      flushList()
-      flushParagraph()
-      nodes.push({
-        text: token.text,
-        type: 'math-block',
-      })
-      continue
-    }
-
-    if (token.type === 'thematic-break') {
-      flushList()
-      flushParagraph()
-      nodes.push({
-        type: 'thematic-break',
-      })
-      continue
-    }
-
-    if (token.type === 'blockquote-line') {
-      flushList()
-      flushParagraph()
-      const lines: string[] = []
-      while (i < tokens.length && tokens[i].type === 'blockquote-line') {
-        const quoteToken = tokens[i]
-        if (quoteToken.type === 'blockquote-line') {
-          lines.push(quoteToken.text)
+      case 'table-row-line': {
+        const table = consumeTable(tokens, index, token)
+        if (table.node) {
+          flushOpenBlocks(state)
+          state.nodes.push(table.node)
+          index = table.nextIndex
+          break
         }
-        i++
+        flushList(state)
+        state.paragraphLines.push(token.line)
+        index++
+        break
       }
-      i--
-      nodes.push({
-        children: parseBlockTokens(scanBlockTokens(lines.join('\n'))),
-        type: 'blockquote',
-      })
-      continue
-    }
-
-    if (token.type === 'table-row-line') {
-      const expectedColumns = token.cells.length
-      if (isTableSeparatorToken(tokens[i + 1], expectedColumns)) {
-        flushList()
-        flushParagraph()
-        const rows: MessageTableRowNode[] = []
-        i += 2
-        while (i < tokens.length && tokens[i].type === 'table-row-line') {
-          const rowToken = tokens[i]
-          if (rowToken.type !== 'table-row-line') {
-            break
-          }
-          if (rowToken.cells.length === expectedColumns) {
-            rows.push(toTableRow(rowToken))
-          }
-          i++
+      case 'ordered-list-item-line':
+        if (!addNestedOrderedListItem(state, token)) {
+          beginTopLevelOrderedListItem(state, token)
         }
-        i--
-        nodes.push({
-          headers: token.cells.map(toTableCell),
-          rows,
-          type: 'table',
+        index++
+        break
+      case 'unordered-list-item-line':
+        if (!addNestedUnorderedListItem(state, token)) {
+          beginTopLevelUnorderedListItem(state, token)
+        }
+        index++
+        break
+      case 'heading-line':
+        flushOpenBlocks(state)
+        state.nodes.push({
+          children: parseInlineNodes(token.text),
+          level: token.level,
+          type: 'heading',
         })
-        continue
-      }
-      flushList()
-      paragraphLines.push(token.line)
-      continue
-    }
-
-    if (token.type === 'ordered-list-item-line') {
-      if (listType === 'ordered-list' && listItems.length > 0 && token.indentation > 0 && orderedListPathStack.length > 0) {
-        const parentEntry = orderedListPathStack.toReversed().find((entry) => entry.indentation < token.indentation)
-        if (parentEntry) {
-          const parentItem = getListItemAtPath(listItems, parentEntry.path)
-          if (parentItem) {
-            const nextIndex = parentItem.nestedItems?.length || 0
-            const nextItem = createListItem(token.text, nextIndex + 1)
-            listItems = appendNestedItemAtPath(listItems, parentEntry.path, nextItem, 'ordered-list')
-            const nextPath = [...parentEntry.path, nextIndex]
-            orderedListPathStack = [
-              ...orderedListPathStack.filter((entry) => entry.indentation < token.indentation),
-              { indentation: token.indentation, path: nextPath },
-            ]
-            canContinueOrderedListItemParagraph = true
-            continue
-          }
+        index++
+        break
+      case 'paragraph-line':
+        if (!appendOrderedListParagraph(state, token)) {
+          flushList(state)
+          state.paragraphLines.push(token.text)
+          state.canContinueOrderedListItemParagraph = false
         }
-      }
-      if (listType && listType !== 'ordered-list') {
-        flushList()
-      }
-      flushParagraph()
-      listType = 'ordered-list'
-      const nextIndex = listItems.length
-      const nextItem = createListItem(token.text, nextIndex + 1)
-      listItems.push(nextItem)
-      orderedListPathStack = [
-        ...orderedListPathStack.filter((entry) => entry.indentation < token.indentation),
-        { indentation: token.indentation, path: [nextIndex] },
-      ]
-      canContinueOrderedListItemParagraph = true
-      continue
+        index++
+        break
     }
-
-    if (token.type === 'unordered-list-item-line') {
-      if (listType === 'ordered-list' && listItems.length > 0 && token.indentation > 0 && orderedListPathStack.length > 0) {
-        const parentEntry = orderedListPathStack.toReversed().find((entry) => entry.indentation < token.indentation)
-        if (parentEntry) {
-          const nextItem = createListItem(token.text)
-          listItems = appendNestedItemAtPath(listItems, parentEntry.path, nextItem, 'unordered-list')
-          canContinueOrderedListItemParagraph = false
-          continue
-        }
-      }
-      if (listType && listType !== 'unordered-list') {
-        flushList()
-      }
-      flushParagraph()
-      listType = 'unordered-list'
-      listItems.push(createListItem(token.text))
-      canContinueOrderedListItemParagraph = false
-      continue
-    }
-
-    if (token.type === 'heading-line') {
-      flushList()
-      flushParagraph()
-      nodes.push({
-        children: parseInlineNodes(token.text),
-        level: token.level,
-        type: 'heading',
-      })
-      continue
-    }
-
-    if (token.type === 'paragraph-line' && listType === 'ordered-list' && listItems.length > 0 && canContinueOrderedListItemParagraph) {
-      const currentPath = orderedListPathStack.at(-1)?.path
-      if (currentPath) {
-        listItems = appendInlineChildrenAtPath(listItems, currentPath, parseInlineNodes(token.text))
-        continue
-      }
-    }
-
-    flushList()
-    paragraphLines.push(token.text)
-    canContinueOrderedListItemParagraph = false
   }
 
-  flushList()
-  flushParagraph()
+  flushList(state)
+  flushParagraph(state)
 
-  return nodes.length === 0 ? getEmptyTextNode() : nodes
+  return state.nodes.length === 0 ? getEmptyTextNode() : state.nodes
 }
