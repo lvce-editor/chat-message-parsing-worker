@@ -10,6 +10,8 @@ export type BlockToken =
   | BlockTableRowLineToken
   | BlockUnorderedListItemLineToken
 
+type HeadingLevel = 1 | 2 | 3 | 4 | 5 | 6
+
 interface BlockBlankToken {
   readonly type: 'blank-line'
 }
@@ -25,7 +27,7 @@ interface BlockBlockQuoteLineToken {
 }
 
 interface BlockHeadingLineToken {
-  readonly level: 1 | 2 | 3 | 4 | 5 | 6
+  readonly level: HeadingLevel
   readonly text: string
   readonly type: 'heading-line'
 }
@@ -64,7 +66,7 @@ interface BlockThematicBreakToken {
 }
 
 interface ParsedHeadingLine {
-  readonly level: 1 | 2 | 3 | 4 | 5 | 6
+  readonly level: HeadingLevel
   readonly text: string
 }
 
@@ -76,6 +78,11 @@ interface ParsedOrderedListItemLine {
 interface ParsedUnorderedListItemLine {
   readonly indentation: number
   readonly text: string
+}
+
+interface ScanResult {
+  readonly nextIndex: number
+  readonly token: BlockToken
 }
 
 const markdownMathBlockDelimiter = '$$'
@@ -118,10 +125,9 @@ const parseHeadingLine = (line: string): ParsedHeadingLine | undefined => {
   if (trimmedStart[index] !== ' ') {
     return undefined
   }
-  const text = trimmedStart.slice(index).trimStart()
   return {
-    level: index as 1 | 2 | 3 | 4 | 5 | 6,
-    text,
+    level: index as HeadingLevel,
+    text: trimmedStart.slice(index).trimStart(),
   }
 }
 
@@ -232,124 +238,145 @@ const getTableCells = (line: string): readonly string[] => {
     .map((part) => part.trim())
 }
 
+const scanCodeBlock = (lines: readonly string[], start: number, trimmed: string): ScanResult | undefined => {
+  if (!trimmed.startsWith('```')) {
+    return undefined
+  }
+  const language = trimmed.slice(3).trim()
+  const codeLines: string[] = []
+  let index = start + 1
+  while (index < lines.length && !lines[index].trim().startsWith('```')) {
+    codeLines.push(lines[index])
+    index++
+  }
+  return {
+    nextIndex: Math.min(index + 1, lines.length),
+    token: language
+      ? {
+          language,
+          text: codeLines.join('\n'),
+          type: 'code-block',
+        }
+      : {
+          text: codeLines.join('\n'),
+          type: 'code-block',
+        },
+  }
+}
+
+const scanMathBlock = (lines: readonly string[], start: number, trimmed: string): ScanResult | undefined => {
+  if (trimmed !== markdownMathBlockDelimiter) {
+    return undefined
+  }
+  let endIndex = start + 1
+  while (endIndex < lines.length && lines[endIndex].trim() !== markdownMathBlockDelimiter) {
+    endIndex++
+  }
+  if (endIndex >= lines.length) {
+    return undefined
+  }
+  return {
+    nextIndex: endIndex + 1,
+    token: {
+      text: lines
+        .slice(start + 1, endIndex)
+        .join('\n')
+        .trim(),
+      type: 'math-block',
+    },
+  }
+}
+
+const getSingleLineToken = (line: string): BlockToken => {
+  const blockQuoteLine = parseBlockQuoteLine(line)
+  if (blockQuoteLine !== undefined) {
+    return {
+      text: blockQuoteLine,
+      type: 'blockquote-line',
+    }
+  }
+
+  const heading = parseHeadingLine(line)
+  if (heading) {
+    return {
+      level: heading.level,
+      text: heading.text,
+      type: 'heading-line',
+    }
+  }
+
+  if (isThematicBreakLine(line)) {
+    return {
+      type: 'thematic-break',
+    }
+  }
+
+  const ordered = parseOrderedListItemLine(line)
+  if (ordered) {
+    return {
+      indentation: ordered.indentation,
+      text: ordered.text,
+      type: 'ordered-list-item-line',
+    }
+  }
+
+  const unordered = parseUnorderedListItemLine(line)
+  if (unordered) {
+    return {
+      indentation: unordered.indentation,
+      text: unordered.text,
+      type: 'unordered-list-item-line',
+    }
+  }
+
+  if (isTableRow(line)) {
+    return {
+      cells: getTableCells(line),
+      line,
+      type: 'table-row-line',
+    }
+  }
+
+  return {
+    text: line,
+    type: 'paragraph-line',
+  }
+}
+
 export const scanBlockTokens = (rawMessage: string): readonly BlockToken[] => {
   const normalizedMessage = normalizeInlineTables(normalizeEscapedNewlines(rawMessage))
   const lines = normalizedMessage.split(lineBreakRegex)
   const tokens: BlockToken[] = []
 
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]
+  let index = 0
+  while (index < lines.length) {
+    const line = lines[index]
     const trimmed = line.trim()
 
     if (!trimmed) {
       tokens.push({
         type: 'blank-line',
       })
+      index++
       continue
     }
 
-    const blockQuoteLine = parseBlockQuoteLine(line)
-    if (blockQuoteLine !== undefined) {
-      tokens.push({
-        text: blockQuoteLine,
-        type: 'blockquote-line',
-      })
+    const codeBlock = scanCodeBlock(lines, index, trimmed)
+    if (codeBlock) {
+      tokens.push(codeBlock.token)
+      index = codeBlock.nextIndex
       continue
     }
 
-    if (trimmed.startsWith('```')) {
-      const language = trimmed.slice(3).trim()
-      const codeLines: string[] = []
-      i++
-      while (i < lines.length && !lines[i].trim().startsWith('```')) {
-        codeLines.push(lines[i])
-        i++
-      }
-      if (language) {
-        tokens.push({
-          language,
-          text: codeLines.join('\n'),
-          type: 'code-block',
-        })
-      } else {
-        tokens.push({
-          text: codeLines.join('\n'),
-          type: 'code-block',
-        })
-      }
+    const mathBlock = scanMathBlock(lines, index, trimmed)
+    if (mathBlock) {
+      tokens.push(mathBlock.token)
+      index = mathBlock.nextIndex
       continue
     }
 
-    if (trimmed === markdownMathBlockDelimiter) {
-      const endIndex = lines.findIndex((candidate, index) => {
-        if (index <= i) {
-          return false
-        }
-        return candidate.trim() === markdownMathBlockDelimiter
-      })
-      if (endIndex !== -1) {
-        tokens.push({
-          text: lines
-            .slice(i + 1, endIndex)
-            .join('\n')
-            .trim(),
-          type: 'math-block',
-        })
-        i = endIndex
-        continue
-      }
-    }
-
-    const heading = parseHeadingLine(line)
-    if (heading) {
-      tokens.push({
-        level: heading.level,
-        text: heading.text,
-        type: 'heading-line',
-      })
-      continue
-    }
-
-    if (isThematicBreakLine(line)) {
-      tokens.push({
-        type: 'thematic-break',
-      })
-      continue
-    }
-
-    const ordered = parseOrderedListItemLine(line)
-    if (ordered) {
-      tokens.push({
-        indentation: ordered.indentation,
-        text: ordered.text,
-        type: 'ordered-list-item-line',
-      })
-      continue
-    }
-
-    const unordered = parseUnorderedListItemLine(line)
-    if (unordered) {
-      tokens.push({
-        indentation: unordered.indentation,
-        text: unordered.text,
-        type: 'unordered-list-item-line',
-      })
-      continue
-    }
-
-    if (isTableRow(line)) {
-      tokens.push({
-        cells: getTableCells(line),
-        line,
-        type: 'table-row-line',
-      })
-      continue
-    }
-
-    tokens.push({
-      text: line,
-      type: 'paragraph-line',
-    })
+    tokens.push(getSingleLineToken(line))
+    index++
   }
 
   return tokens

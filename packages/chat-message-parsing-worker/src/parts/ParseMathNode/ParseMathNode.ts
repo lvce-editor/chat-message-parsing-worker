@@ -4,7 +4,12 @@ import type {
   MessageIntermediateNode,
   MessageListItemNode,
   MessageTableCellNode,
+  MessageTableRowNode,
 } from '../ParseMessageContentTypes/ParseMessageContentTypes.ts'
+
+const mapAsync = async <T, U>(items: readonly T[], mapper: (item: T) => Promise<U>): Promise<readonly U[]> => {
+  return Promise.all(items.map(mapper))
+}
 
 const parseMathInline = async (children: readonly MessageInlineNode[]): Promise<readonly MessageInlineNode[]> => {
   const nextChildren: MessageInlineNode[] = []
@@ -69,6 +74,13 @@ const parseMathTableCell = async (cell: MessageTableCellNode): Promise<MessageTa
   }
 }
 
+const parseMathTableRow = async (row: MessageTableRowNode): Promise<MessageTableRowNode> => {
+  return {
+    ...row,
+    cells: await mapAsync(row.cells, parseMathTableCell),
+  }
+}
+
 export const parseMathNode = async (node: MessageIntermediateNode): Promise<MessageIntermediateNode> => {
   if (node.type === 'math-block') {
     const dom = await ChatMathWorker.getMathBlockDom(node)
@@ -84,45 +96,22 @@ export const parseMathNode = async (node: MessageIntermediateNode): Promise<Mess
     }
   }
   if (node.type === 'blockquote') {
-    const children: MessageIntermediateNode[] = []
-    for (const child of node.children) {
-      children.push(await parseMathNode(child))
-    }
     return {
       ...node,
-      children,
+      children: await mapAsync(node.children, parseMathNode),
     }
   }
   if (node.type === 'ordered-list' || node.type === 'unordered-list') {
-    const items: MessageListItemNode[] = []
-    for (const item of node.items) {
-      items.push(await parseMathListItem(item))
-    }
     return {
       ...node,
-      items,
+      items: await mapAsync(node.items, parseMathListItem),
     }
   }
   if (node.type === 'table') {
-    const headers: MessageTableCellNode[] = []
-    for (const header of node.headers) {
-      headers.push(await parseMathTableCell(header))
-    }
-    const rows = []
-    for (const row of node.rows) {
-      const cells: MessageTableCellNode[] = []
-      for (const cell of row.cells) {
-        cells.push(await parseMathTableCell(cell))
-      }
-      rows.push({
-        ...row,
-        cells,
-      })
-    }
     return {
       ...node,
-      headers,
-      rows,
+      headers: await mapAsync(node.headers, parseMathTableCell),
+      rows: await mapAsync(node.rows, parseMathTableRow),
     }
   }
   return node
