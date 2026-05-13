@@ -39,5 +39,6 @@ export const test: Test = async ({ Command, expect, Locator }) => {
   // assert
   const eventNodes = Locator('.chatNetworkEvent')
   await expect(eventNodes).toHaveCount(1)
-  await expect(eventNodes.nth(0)).toContainText('"value": "Beta response"')
+  const firstEventNode = eventNodes.nth(0)
+  await expect(firstEventNode).toContainText('"value": "Beta response"')
 }
