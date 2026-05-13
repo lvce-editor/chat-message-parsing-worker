@@ -23,7 +23,7 @@
   },
   "devDependencies": {
     "@lerna/legacy-package-management": "^8.2.4",
-    "@lvce-editor/eslint-config": "^10.0.0",
+    "@lvce-editor/eslint-config": "^10.1.0",
     "eslint": "^10.3.0",
     "lerna": "^8.2.3",
     "prettier": "^3.8.3",
