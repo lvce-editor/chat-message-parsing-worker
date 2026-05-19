@@ -48,7 +48,7 @@
     "@lvce-editor/rpc": "^6.4.0",
     "@lvce-editor/virtual-dom-worker": "^9.11.0",
     "jest": "^30.4.2",
-    "ts-jest": "^29.4.9"
+    "ts-jest": "^29.4.10"
   },
   "dependencies": {
     "@lvce-editor/rpc-registry": "^9.23.0"
