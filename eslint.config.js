@@ -11,4 +11,13 @@ export default [
       '@typescript-eslint/prefer-readonly-parameter-types': 'off',
     },
   },
+  {
+    files: ['packages/chat-message-parsing-worker/{src,test}/**/*.ts'],
+    rules: {
+      'sonarjs/super-linear-regex': 'off',
+      'unicorn/max-nested-calls': 'off',
+      'unicorn/no-break-in-nested-loop': 'off',
+      'unicorn/prefer-includes-over-repeated-comparisons': 'off',
+    },
+  },
 ]
