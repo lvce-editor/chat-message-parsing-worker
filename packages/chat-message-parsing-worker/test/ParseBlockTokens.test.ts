@@ -9,7 +9,7 @@ const textNode = (text: string): ReturnType<typeof parseBlockTokens>[number] => 
 
 const listItem = (text: string, index?: number): { children: readonly [{ text: string; type: 'text' }]; index?: number; type: 'list-item' } => ({
   children: [{ text, type: 'text' }],
-  ...(index === undefined ? {} : { index }),
+  ...(index !== undefined && { index }),
   type: 'list-item',
 })
 

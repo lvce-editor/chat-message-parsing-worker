@@ -99,7 +99,7 @@ const createInitialState = (): ParseState => {
 const createListItem = (text: string, index?: number): MessageListItemNode => {
   return {
     children: parseInlineNodes(text),
-    ...(index === undefined ? {} : { index }),
+    ...(index !== undefined && { index }),
     type: 'list-item',
   }
 }
@@ -206,7 +206,7 @@ const findOrderedListParentEntry = (state: ParseState, indentation: number): Ord
   if (state.listType !== 'ordered-list' || state.listItems.length === 0 || indentation <= 0 || state.orderedListPathStack.length === 0) {
     return undefined
   }
-  return state.orderedListPathStack.toReversed().find((entry) => entry.indentation < indentation)
+  return state.orderedListPathStack.findLast((entry) => entry.indentation < indentation)
 }
 
 const addNestedOrderedListItem = (state: ParseState, token: Extract<BlockToken, { type: 'ordered-list-item-line' }>): boolean => {
