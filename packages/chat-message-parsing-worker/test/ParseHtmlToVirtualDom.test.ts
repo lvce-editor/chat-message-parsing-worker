@@ -34,6 +34,8 @@ test('parseHtmlToVirtualDom should sanitize non-http href', () => {
   expect(result[0]).toEqual({
     childCount: 1,
     href: '#',
+    rel: 'noopener noreferrer',
+    target: '_blank',
     type: VirtualDomElements.A,
   })
 })
@@ -44,6 +46,8 @@ test('parseHtmlToVirtualDom should sanitize data href', () => {
   expect(result[0]).toEqual({
     childCount: 1,
     href: '#',
+    rel: 'noopener noreferrer',
+    target: '_blank',
     type: VirtualDomElements.A,
   })
 })
