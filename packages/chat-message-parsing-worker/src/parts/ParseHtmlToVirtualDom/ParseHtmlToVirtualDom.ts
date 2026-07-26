@@ -316,6 +316,22 @@ const normalizeUrl = (url: string): string => {
   return isHttpUrl(url) ? url : '#'
 }
 
+const getHrefAttributes = (node: ReadonlyHtmlElementNode): Record<string, unknown> => {
+  if (!node.attributes.href) {
+    return {}
+  }
+  if (node.tagName === 'a') {
+    return {
+      href: normalizeUrl(node.attributes.href),
+      rel: 'noopener noreferrer',
+      target: '_blank',
+    }
+  }
+  return {
+    href: normalizeUrl(node.attributes.href),
+  }
+}
+
 const getElementAttributes = (node: ReadonlyHtmlElementNode): Record<string, unknown> => {
   const attributes: Record<string, unknown> = {}
   const className = node.attributes.class || node.attributes.classname
@@ -340,9 +356,6 @@ const getElementAttributes = (node: ReadonlyHtmlElementNode): Record<string, unk
   if (node.attributes.value) {
     attributes.value = node.attributes.value
   }
-  if (node.attributes.href) {
-    attributes.href = normalizeUrl(node.attributes.href)
-  }
   if (node.attributes.src) {
     attributes.src = normalizeUrl(node.attributes.src)
   }
@@ -361,7 +374,10 @@ const getElementAttributes = (node: ReadonlyHtmlElementNode): Record<string, unk
   if ('readonly' in node.attributes) {
     attributes.readOnly = node.attributes.readonly !== 'false'
   }
-  return attributes
+  return {
+    ...attributes,
+    ...getHrefAttributes(node),
+  }
 }
 
 const toVirtualDom = (node: ReadonlyHtmlNode): readonly VirtualDomNode[] => {
